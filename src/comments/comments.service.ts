@@ -1,0 +1,172 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  CommentAuthorType,
+  CommentChannel,
+  UserRole,
+} from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { AuthUser } from '../auth/decorators/current-user.decorator';
+import { CreateInternalCommentDto } from './dto/create-internal-comment.dto';
+import { ClientReplyDto } from './dto/client-reply.dto';
+
+// Campos retornados em qualquer leitura/criacao de comentario autenticado.
+const COMMENT_SELECT = {
+  id: true,
+  timestampVideo: true,
+  texto: true,
+  channel: true,
+  autorType: true,
+  autorNome: true,
+  autorUserId: true,
+  autorUser: { select: { id: true, nome: true, role: true } },
+  parentId: true,
+  criadoEm: true,
+} as const;
+
+type CommentRow = {
+  channel: CommentChannel;
+  autorType: CommentAuthorType;
+  autorUser: { id: string; nome: string; role: UserRole } | null;
+} & Record<string, unknown>;
+
+/**
+ * Formata o comentario para a API: renomeia autorUser.role -> teamRole e
+ * deriva isAgencyReply (resposta da agencia no canal do cliente) — o front
+ * so reconhece esses nomes, nao "role"/um flag cru de canal.
+ */
+function toCommentDto<T extends CommentRow>(comment: T) {
+  const { autorUser, ...rest } = comment;
+  return {
+    ...rest,
+    autorUser: autorUser
+      ? { id: autorUser.id, nome: autorUser.nome, teamRole: autorUser.role }
+      : null,
+    isAgencyReply:
+      comment.channel === CommentChannel.cliente &&
+      comment.autorType === CommentAuthorType.owner,
+  };
+}
+
+@Injectable()
+export class CommentsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Canal INTERNO — lista os comentarios da agencia (owner + editor da
+   * mesma conta). Nunca inclui o canal cliente.
+   */
+  async listInternal(accountId: string, videoId: string) {
+    await this.assertVideoInAccount(accountId, videoId);
+    const comments = await this.prisma.comment.findMany({
+      where: { videoId, channel: CommentChannel.interno },
+      orderBy: [{ timestampVideo: 'asc' }, { criadoEm: 'asc' }],
+      select: COMMENT_SELECT,
+    });
+    return comments.map(toCommentDto);
+  }
+
+  /**
+   * Canal INTERNO — cria comentario como owner ou editor conforme o token.
+   */
+  async createInternal(
+    accountId: string,
+    author: AuthUser,
+    videoId: string,
+    dto: CreateInternalCommentDto,
+  ) {
+    await this.assertVideoInAccount(accountId, videoId);
+    await this.assertParent(videoId, CommentChannel.interno, dto.parentId);
+
+    const comment = await this.prisma.comment.create({
+      data: {
+        videoId,
+        timestampVideo: dto.timestampVideo,
+        texto: dto.texto,
+        channel: CommentChannel.interno,
+        // owner ou editor, conforme quem esta autenticado
+        autorType:
+          author.role === UserRole.owner
+            ? CommentAuthorType.owner
+            : CommentAuthorType.editor,
+        autorUserId: author.id,
+        parentId: dto.parentId ?? null,
+      },
+      select: COMMENT_SELECT,
+    });
+    return toCommentDto(comment);
+  }
+
+  /**
+   * Canal CLIENTE — resposta do owner ao cliente. Apenas owner (garantido
+   * pelo RolesGuard no controller). Fica no mesmo canal do cliente.
+   */
+  async clientReply(
+    accountId: string,
+    owner: AuthUser,
+    videoId: string,
+    dto: ClientReplyDto,
+  ) {
+    await this.assertVideoInAccount(accountId, videoId);
+    await this.assertParent(videoId, CommentChannel.cliente, dto.parentId);
+
+    const comment = await this.prisma.comment.create({
+      data: {
+        videoId,
+        timestampVideo: dto.timestampVideo,
+        texto: dto.texto,
+        channel: CommentChannel.cliente,
+        autorType: CommentAuthorType.owner,
+        autorUserId: owner.id,
+        parentId: dto.parentId ?? null,
+      },
+      select: COMMENT_SELECT,
+    });
+    return toCommentDto(comment);
+  }
+
+  /**
+   * Garante que o video existe e pertence a conta do usuario autenticado.
+   * Base do isolamento por account_id exigido pelos guards.
+   */
+  private async assertVideoInAccount(accountId: string, videoId: string) {
+    const video = await this.prisma.video.findUnique({
+      where: { id: videoId },
+      select: { id: true, project: { select: { accountId: true } } },
+    });
+    if (!video) {
+      throw new NotFoundException('Video nao encontrado');
+    }
+    if (video.project.accountId !== accountId) {
+      throw new ForbiddenException('Video nao pertence a esta conta');
+    }
+    return video;
+  }
+
+  /**
+   * Valida a resposta em thread: o comentario pai precisa existir, ser do
+   * mesmo video e do MESMO canal — nunca cruza canal cliente/interno.
+   */
+  private async assertParent(
+    videoId: string,
+    channel: CommentChannel,
+    parentId?: string,
+  ) {
+    if (!parentId) {
+      return;
+    }
+    const parent = await this.prisma.comment.findUnique({
+      where: { id: parentId },
+      select: { videoId: true, channel: true },
+    });
+    if (!parent || parent.videoId !== videoId || parent.channel !== channel) {
+      throw new BadRequestException(
+        'Comentario pai invalido para este video/canal',
+      );
+    }
+  }
+}
