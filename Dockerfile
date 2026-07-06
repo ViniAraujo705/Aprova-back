@@ -7,12 +7,20 @@ ARG NODE_VERSION=20-slim
 # ---- deps: instala TODAS as deps (dev incluidas), usadas so no build ----
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
+# Prisma (generate/migrate) precisa de openssl para detectar o libssl e
+# baixar/rodar o engine correto - sem isso ele "adivinha" a versao e falha.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ---- build: gera o Prisma Client e compila o TypeScript ----
 FROM node:${NODE_VERSION} AS build
 WORKDIR /app
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json nest-cli.json tsconfig.json tsconfig.build.json ./
 COPY prisma ./prisma
