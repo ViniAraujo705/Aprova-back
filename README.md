@@ -48,6 +48,38 @@ npm run start:dev
 A API sobe em `http://localhost:3000/api` e o Swagger em
 `http://localhost:3000/api/docs`.
 
+### Via Docker
+
+```bash
+cp .env.example .env
+# edite .env com DATABASE_URL (opcional aqui, veja abaixo), credenciais do
+# R2 e JWT_SECRET - o resto tem default para rodar local
+
+docker compose up --build
+```
+
+O `docker-compose.yml` sobe Postgres e Redis, roda as migrations (serviço
+`migrate`, via `prisma migrate deploy`) e só então inicia a API (serviço
+`app`). `DATABASE_URL`/`REDIS_HOST`/`REDIS_PORT` já são sobrescritos no
+compose para apontar para os serviços internos (`postgres`, `redis`); as
+demais variáveis (R2, JWT_SECRET etc.) vêm do `.env`.
+
+O `Dockerfile` é multi-stage (`deps` → `build` → `migrate` / `prod-deps` →
+`runtime`) e gera uma imagem final sem devDependencies, rodando como usuário
+não-root. Para rodar só a imagem de produção (ex.: atrás de um orquestrador
+que já cuida de Postgres/Redis):
+
+```bash
+docker build -t aprova-backend --target runtime .
+docker run --env-file .env -p 3000:3000 aprova-backend
+```
+
+> Não há Docker disponível neste ambiente de desenvolvimento para validar o
+> build fim-a-fim - rode `docker compose up --build` e confira os logs antes
+> de usar em produção. Os pontos mais prováveis de atrito são a geração do
+> engine do Prisma e o download dos binários do `ffmpeg-static`/
+> `ffprobe-static` durante o build (ambos exigem acesso à internet).
+
 > **Processamento de vídeo:** ao registrar um vídeo, um job é enfileirado no
 > Redis. O mesmo processo Nest roda o worker (BullMQ), que baixa o original do
 > R2, gera a **thumbnail** e uma **versão otimizada** para streaming, sobe ambos
