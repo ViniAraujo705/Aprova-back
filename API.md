@@ -116,6 +116,27 @@ Erros: `401` credenciais inválidas · `403` conta suspensa.
 > por papel (`owner`/`editor`/`admin`) — o Prisma chama esse campo de `role`
 > internamente, mas a API sempre expõe como `teamRole`.
 
+### `POST /auth/forgot-password`
+Sem autenticação. Rate limit: **3/min**.
+
+Body: `{ "email": "..." }`
+
+Resposta `200` sempre `{ "sent": true }`, exista ou não o email na base
+(evita que o endpoint seja usado para descobrir emails cadastrados). Se
+existir, envia por email (Resend, ou simulado via log sem
+`RESEND_API_KEY`) um link `/redefinir-senha/:token` válido por 1 hora.
+
+### `POST /auth/reset-password`
+Sem autenticação. Rate limit: **5/min**.
+
+Body: `{ "token": "<uuid>", "novaSenha": "..." }` (mín. 6 caracteres)
+
+Resposta `200`: `{ "reset": true }`.
+
+Erros: `404` token inválido, expirado ou já utilizado. Ao ser consumido
+com sucesso, o token invalida quaisquer outros tokens de reset pendentes
+do mesmo usuário.
+
 ---
 
 ## Clientes (`/clients`)

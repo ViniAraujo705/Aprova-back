@@ -83,13 +83,31 @@ model User {
   corDestaque String?    @map("cor_destaque")
   criadoEm    DateTime   @default(now()) @map("criado_em")
 
-  account           Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  comments          Comment[]
+  account             Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  comments            Comment[]
   // Videos em que este usuario (owner ou editor) e o responsavel designado
-  videosResponsavel Video[]
+  videosResponsavel   Video[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([accountId])
   @@map("users")
+}
+
+// Token de uso unico para o fluxo de "esqueci minha senha". Expira em 1h
+// (ver AuthService.forgotPassword); usedEm marca consumo para nao permitir
+// reuso mesmo dentro da janela de validade.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique @default(uuid())
+  expiresEm DateTime  @map("expires_em")
+  usedEm    DateTime? @map("used_em")
+  criadoEm  DateTime  @default(now()) @map("criado_em")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 model Invite {

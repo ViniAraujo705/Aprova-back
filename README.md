@@ -117,6 +117,13 @@ Papéis (`role`): **profissional** (padrão) e **admin**. Contas têm `status`
   (`role` é opcional, padrão `profissional`; permite semear um admin)
 - `POST /auth/login` — `{ email, senha }` → `{ user, access_token }`
   (o token carrega `role`; retorna 403 se a conta estiver suspensa)
+- `POST /auth/forgot-password` — `{ email }` → `{ sent: true }`. Sempre
+  retorna a mesma resposta (nunca revela se o email existe). Se existir,
+  envia por email (Resend, ou simulado via log sem `RESEND_API_KEY`) um
+  link com token de reset válido por 1h.
+- `POST /auth/reset-password` — `{ token, novaSenha }` → `{ reset: true }`.
+  Token é de uso único; ao ser consumido, invalida quaisquer outros tokens
+  pendentes do mesmo usuário.
 
 ### Clientes (autenticado, role `profissional` — header `Authorization: Bearer <token>`)
 - `POST /clients` — `{ nome, email }`

@@ -2,24 +2,34 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { OnboardingService } from './onboarding.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { toMemberDto } from '../common/dto/team-role.util';
 
 @Injectable()
 export class AuthService {
   private readonly SALT_ROUNDS = 10;
+  private readonly RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
+  private readonly logger = new Logger(AuthService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly config: ConfigService,
+    private readonly mail: MailService,
     private readonly onboarding: OnboardingService,
   ) {}
 
@@ -115,6 +125,92 @@ export class AuthService {
         user.accountId,
       ),
     };
+  }
+
+  /**
+   * Gera um token de reset (valido por 1h) e envia por email. Sempre
+   * retorna a mesma resposta, exista ou nao o email na base - evita que o
+   * endpoint seja usado pra descobrir quais emails tem conta cadastrada.
+   */
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ sent: true }> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      select: { id: true, email: true },
+    });
+
+    if (user) {
+      const resetToken = await this.prisma.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          expiresEm: new Date(Date.now() + this.RESET_TOKEN_TTL_MS),
+        },
+        select: { token: true },
+      });
+
+      const resetUrl = this.buildResetUrl(resetToken.token);
+      try {
+        await this.mail.send(
+          user.email,
+          'Redefinicao de senha - Aprova',
+          `Recebemos um pedido para redefinir sua senha. Acesse o link abaixo (valido por 1 hora):\n${resetUrl}\n\nSe voce nao pediu isso, ignore este email.`,
+        );
+      } catch (err) {
+        // Nao propaga: a resposta ao cliente ja e generica e nao deve
+        // revelar se o envio falhou (ex.: dominio de email invalido).
+        this.logger.warn(
+          `Falha ao enviar email de reset para ${user.email}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return { sent: true };
+  }
+
+  /**
+   * Consome um token de reset valido (nao usado, nao expirado) e troca a
+   * senha do usuario. Invalida os demais tokens pendentes do usuario.
+   */
+  async resetPassword(dto: ResetPasswordDto): Promise<{ reset: true }> {
+    const resetToken = await this.prisma.passwordResetToken.findUnique({
+      where: { token: dto.token },
+      select: { id: true, userId: true, expiresEm: true, usedEm: true },
+    });
+
+    if (!resetToken || resetToken.usedEm || resetToken.expiresEm < new Date()) {
+      throw new NotFoundException('Token invalido ou expirado');
+    }
+
+    const senhaHash = await bcrypt.hash(dto.novaSenha, this.SALT_ROUNDS);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: resetToken.userId },
+        data: { senha: senhaHash },
+      }),
+      this.prisma.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedEm: new Date() },
+      }),
+      // Invalida quaisquer outros tokens pendentes do mesmo usuario.
+      this.prisma.passwordResetToken.updateMany({
+        where: {
+          userId: resetToken.userId,
+          usedEm: null,
+          id: { not: resetToken.id },
+        },
+        data: { usedEm: new Date() },
+      }),
+    ]);
+
+    return { reset: true };
+  }
+
+  private buildResetUrl(token: string): string {
+    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
+      .split(',')[0]
+      .trim();
+    const origin = base && base !== '*' ? base : 'http://localhost:5173';
+    return `${origin}/redefinir-senha/${token}`;
   }
 
   private signToken(
