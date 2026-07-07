@@ -74,11 +74,10 @@ docker build -t aprova-backend --target runtime .
 docker run --env-file .env -p 3000:3000 aprova-backend
 ```
 
-> Não há Docker disponível neste ambiente de desenvolvimento para validar o
-> build fim-a-fim - rode `docker compose up --build` e confira os logs antes
-> de usar em produção. Os pontos mais prováveis de atrito são a geração do
-> engine do Prisma e o download dos binários do `ffmpeg-static`/
-> `ffprobe-static` durante o build (ambos exigem acesso à internet).
+> `docker compose up --build` foi validado fim-a-fim (build, migrations,
+> `/api/health`, registro de conta e onboarding). O build baixa os binários
+> do `ffmpeg-static`/`ffprobe-static` e gera o engine do Prisma durante o
+> build, então exige acesso à internet.
 
 > **Processamento de vídeo:** ao registrar um vídeo, um job é enfileirado no
 > Redis. O mesmo processo Nest roda o worker (BullMQ), que baixa o original do
