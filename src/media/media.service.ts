@@ -16,7 +16,7 @@ export class MediaService {
 
   constructor() {
     if (ffmpegStatic) {
-      ffmpeg.setFfmpegPath(ffmpegStatic as unknown as string);
+      ffmpeg.setFfmpegPath(ffmpegStatic);
     } else {
       this.logger.warn(
         'ffmpeg-static não resolveu um binário nesta plataforma; o processamento de vídeo pode falhar.',

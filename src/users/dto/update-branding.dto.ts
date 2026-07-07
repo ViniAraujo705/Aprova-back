@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsOptional, IsString, IsUrl, Matches } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Matches,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateBrandingDto {

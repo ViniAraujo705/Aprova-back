@@ -7,15 +7,9 @@ import { VideoProcessingService } from './processing/video-processing.service';
 import { VideoProcessingProcessor } from './processing/video-processing.processor';
 
 @Module({
-  imports: [
-    BullModule.registerQueue({ name: VIDEO_PROCESSING_QUEUE }),
-  ],
+  imports: [BullModule.registerQueue({ name: VIDEO_PROCESSING_QUEUE })],
   controllers: [VideosController],
-  providers: [
-    VideosService,
-    VideoProcessingService,
-    VideoProcessingProcessor,
-  ],
+  providers: [VideosService, VideoProcessingService, VideoProcessingProcessor],
   exports: [VideosService],
 })
 export class VideosModule {}

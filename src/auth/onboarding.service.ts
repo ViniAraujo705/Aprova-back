@@ -80,7 +80,8 @@ export class OnboardingService {
             create: [
               {
                 timestampVideo: 3,
-                texto: 'Curti a abertura! Podemos deixar a logo um pouco maior?',
+                texto:
+                  'Curti a abertura! Podemos deixar a logo um pouco maior?',
                 autorNome: 'Cliente Exemplo',
               },
               {

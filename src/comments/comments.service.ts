@@ -4,11 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  CommentAuthorType,
-  CommentChannel,
-  UserRole,
-} from '@prisma/client';
+import { CommentAuthorType, CommentChannel, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { CreateInternalCommentDto } from './dto/create-internal-comment.dto';

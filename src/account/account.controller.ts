@@ -91,7 +91,9 @@ export class AccountController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.owner)
-  @ApiOperation({ summary: 'Owner lista os membros (owner + editores) da conta.' })
+  @ApiOperation({
+    summary: 'Owner lista os membros (owner + editores) da conta.',
+  })
   listMembers(@CurrentUser() user: AuthUser) {
     return this.accountService.listMembers(user.accountId);
   }
@@ -116,8 +118,7 @@ export class AccountController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.owner)
   @ApiOperation({
-    summary:
-      'Owner promove um editor ativo a owner (nao suporta rebaixar).',
+    summary: 'Owner promove um editor ativo a owner (nao suporta rebaixar).',
   })
   promoteMember(
     @CurrentUser() user: AuthUser,

@@ -55,7 +55,12 @@ export class CommentsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) videoId: string,
     @Body() dto: CreateInternalCommentDto,
   ) {
-    return this.commentsService.createInternal(user.accountId, user, videoId, dto);
+    return this.commentsService.createInternal(
+      user.accountId,
+      user,
+      videoId,
+      dto,
+    );
   }
 
   @Post('client-reply')

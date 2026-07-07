@@ -29,9 +29,7 @@ async function bootstrap() {
   // nenhuma origem (nunca reflete "*" quando credentials: true esta ligado).
   const corsOrigin = config.get<string>('CORS_ORIGIN');
   app.enableCors({
-    origin: corsOrigin
-      ? corsOrigin.split(',').map((o) => o.trim())
-      : false,
+    origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim()) : false,
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });

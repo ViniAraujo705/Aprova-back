@@ -5,8 +5,7 @@ export class UpdateDeadlineDto {
   @ApiProperty({
     required: false,
     nullable: true,
-    description:
-      'Prazo de entrega (ISO 8601). Enviar null remove o prazo.',
+    description: 'Prazo de entrega (ISO 8601). Enviar null remove o prazo.',
     example: '2026-08-15',
   })
   @IsOptional()

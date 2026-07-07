@@ -1,8 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type {
-  Content,
-  TDocumentDefinitions,
-} from 'pdfmake/interfaces';
+import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { PrismaService } from '../prisma/prisma.service';
 import { PdfService } from './pdf.service';
 
@@ -158,7 +155,10 @@ export class ProjectReportService {
         content.push({
           ul: video.comments.map((c) => ({
             text: [
-              { text: `[${this.formatTimestamp(c.timestampVideo)}] `, bold: true },
+              {
+                text: `[${this.formatTimestamp(c.timestampVideo)}] `,
+                bold: true,
+              },
               {
                 text: `${c.autorNome ?? c.autorUser?.nome ?? 'Agencia'}: `,
                 bold: true,

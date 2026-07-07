@@ -39,10 +39,7 @@ export class RatingQuestionsController {
 
   @Post()
   @Roles(UserRole.owner)
-  create(
-    @CurrentUser() user: AuthUser,
-    @Body() dto: CreateRatingQuestionDto,
-  ) {
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateRatingQuestionDto) {
     return this.ratingQuestionsService.create(user.accountId, dto);
   }
 

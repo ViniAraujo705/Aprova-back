@@ -33,9 +33,10 @@ export class StorageService {
 
   constructor(private readonly config: ConfigService) {
     this.bucket = this.config.get<string>('R2_BUCKET_NAME') as string;
-    this.publicUrl = (
-      this.config.get<string>('R2_PUBLIC_URL') ?? ''
-    ).replace(/\/$/, '');
+    this.publicUrl = (this.config.get<string>('R2_PUBLIC_URL') ?? '').replace(
+      /\/$/,
+      '',
+    );
 
     this.client = new S3Client({
       region: 'auto',

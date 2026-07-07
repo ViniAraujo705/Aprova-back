@@ -91,10 +91,9 @@ export class AdminService {
       storage: {
         estimadoBytes: totalVideos * this.ESTIMATED_BYTES_PER_VIDEO,
         estimadoGb: Number(
-          (
-            (totalVideos * this.ESTIMATED_BYTES_PER_VIDEO) /
-            1024 ** 3
-          ).toFixed(2),
+          ((totalVideos * this.ESTIMATED_BYTES_PER_VIDEO) / 1024 ** 3).toFixed(
+            2,
+          ),
         ),
         observacao:
           'Estimativa por contagem (~50MB/video); tamanho real nao e armazenado.',

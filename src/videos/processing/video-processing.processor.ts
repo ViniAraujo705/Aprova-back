@@ -98,7 +98,9 @@ export class VideoProcessingProcessor extends WorkerHost {
       await this.markErro(videoId);
       throw err; // permite o retry configurado na fila
     } finally {
-      await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+      await rm(workDir, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
     }
   }
 

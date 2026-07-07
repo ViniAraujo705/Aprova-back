@@ -63,8 +63,7 @@ export class DashboardService {
       }),
     ]);
 
-    const { maisRapido, maisLento } =
-      this.tempoMedioPorCliente(aprovados);
+    const { maisRapido, maisLento } = this.tempoMedioPorCliente(aprovados);
 
     return {
       periodoPendentesHoras: horasPendentes,

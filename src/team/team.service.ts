@@ -51,9 +51,7 @@ export class TeamService {
       }),
     ]);
 
-    const comAtribuicao = new Set(
-      atribuidos.map((a) => a.editorResponsavelId),
-    );
+    const comAtribuicao = new Set(atribuidos.map((a) => a.editorResponsavelId));
     const aprovadosPorEditor = new Map(
       aprovados.map((a) => [a.editorResponsavelId, a]),
     );

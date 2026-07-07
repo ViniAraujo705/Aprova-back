@@ -7,11 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import {
-  InviteStatus,
-  UserRole,
-  UserStatus,
-} from '@prisma/client';
+import { InviteStatus, UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
@@ -159,9 +155,7 @@ export class AccountService {
       throw new NotFoundException('Convite nao encontrado nesta conta');
     }
     if (invite.status !== InviteStatus.pendente) {
-      throw new BadRequestException(
-        'Convite ja foi aceito ou cancelado',
-      );
+      throw new BadRequestException('Convite ja foi aceito ou cancelado');
     }
 
     await this.prisma.invite.update({

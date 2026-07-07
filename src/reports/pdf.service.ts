@@ -21,7 +21,7 @@ interface PdfPrinterInstance {
 type PdfPrinterCtor = new (
   fonts: Record<string, unknown>,
 ) => PdfPrinterInstance;
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 const PdfPrinter: PdfPrinterCtor = require('pdfmake');
 
 /**
