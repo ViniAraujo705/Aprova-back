@@ -47,6 +47,6 @@ export class UsersController {
     @CurrentUser() user: AuthUser,
     @Body() dto: UpdateBrandingDto,
   ) {
-    return this.usersService.updateBranding(user.id, dto);
+    return this.usersService.updateBranding(user.id, user.accountId, dto);
   }
 }

@@ -1,7 +1,16 @@
-import { IsOptional, IsString, IsUrl, Matches } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsUrl, Matches } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateBrandingDto {
+  @ApiPropertyOptional({
+    description: 'Nome da agência (Account.nomeAgencia).',
+    example: 'Agência Maria',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  nome?: string;
+
   @ApiPropertyOptional({
     description: 'URL pública do logo da agência (após upload no R2).',
   })

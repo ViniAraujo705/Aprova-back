@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
+import { ApproveVideoDto } from './dto/approve-video.dto';
 
 @Injectable()
 export class PublicService {
@@ -21,7 +22,7 @@ export class PublicService {
   async getVideo(linkPublico: string) {
     const video = await this.resolveVideo(linkPublico);
 
-    const [comments, ratings] = await Promise.all([
+    const [comments, ratings, queue, ratingQuestions] = await Promise.all([
       this.prisma.comment.findMany({
         // Canal publico: SOMENTE comentarios do canal do cliente. O canal
         // interno da agencia nunca e exposto aqui.
@@ -45,10 +46,31 @@ export class PublicService {
         orderBy: { criadoEm: 'asc' },
         select: {
           id: true,
-          categoria: true,
+          ratingQuestionId: true,
           nota: true,
           criadoEm: true,
         },
+      }),
+      // Fila para o swipe "Preview Reels": todos os videos do mesmo
+      // cliente (escopo resolvido a partir do video atual, nunca de um
+      // parametro da request), incluindo o proprio video atual - o front
+      // localiza a posicao via linkPublico para navegar prev/next.
+      this.prisma.video.findMany({
+        where: { project: { clientId: video.project.clientId } },
+        orderBy: { criadoEm: 'asc' },
+        select: {
+          linkPublico: true,
+          nomeArquivo: true,
+          thumbnailUrl: true,
+          status: true,
+        },
+      }),
+      // Perguntas de avaliacao ativas da conta dona deste video (substitui
+      // as categorias fixas iluminacao/audio/enquadramento).
+      this.prisma.ratingQuestion.findMany({
+        where: { accountId: video.project.accountId, ativo: true },
+        orderBy: { ordem: 'asc' },
+        select: { id: true, texto: true, ordem: true },
       }),
     ]);
 
@@ -63,6 +85,8 @@ export class PublicService {
       statusProcessamento: video.statusProcessamento,
       versao: video.versao,
       status: video.status,
+      // Nota geral (1-5) dada pelo cliente no momento da aprovacao.
+      notaGeral: video.notaGeral,
       criadoEm: video.criadoEm,
       // Dados para montar a visualizacao "Preview Reels" e as Open Graph
       // tags (preview do WhatsApp) no frontend
@@ -82,6 +106,13 @@ export class PublicService {
         isAgencyReply: c.autorType === CommentAuthorType.owner,
       })),
       ratings,
+      ratingQuestions,
+      queue: queue.map((v) => ({
+        link: v.linkPublico,
+        title: v.nomeArquivo,
+        posterUrl: v.thumbnailUrl,
+        status: v.status,
+      })),
     };
   }
 
@@ -111,30 +142,45 @@ export class PublicService {
 
   async addRating(linkPublico: string, dto: CreateRatingDto) {
     const video = await this.resolveVideo(linkPublico);
+
+    // Garante que a pergunta pertence a mesma conta deste video - nunca
+    // aceita uma rating_question_id de outra agencia.
+    const question = await this.prisma.ratingQuestion.findFirst({
+      where: { id: dto.ratingQuestionId, accountId: video.project.accountId },
+      select: { id: true },
+    });
+    if (!question) {
+      throw new NotFoundException('Pergunta de avaliacao nao encontrada');
+    }
+
     return this.prisma.rating.create({
       data: {
         videoId: video.id,
-        categoria: dto.categoria,
+        ratingQuestionId: dto.ratingQuestionId,
         nota: dto.nota,
       },
       select: {
         id: true,
-        categoria: true,
+        ratingQuestionId: true,
         nota: true,
         criadoEm: true,
       },
     });
   }
 
-  approve(linkPublico: string) {
-    return this.setStatus(linkPublico, VideoStatus.aprovado);
+  approve(linkPublico: string, dto: ApproveVideoDto) {
+    return this.setStatus(linkPublico, VideoStatus.aprovado, dto.notaGeral);
   }
 
   requestChanges(linkPublico: string) {
     return this.setStatus(linkPublico, VideoStatus.ajuste);
   }
 
-  private async setStatus(linkPublico: string, status: VideoStatus) {
+  private async setStatus(
+    linkPublico: string,
+    status: VideoStatus,
+    notaGeral?: number,
+  ) {
     const video = await this.resolveVideo(linkPublico);
     const updated = await this.prisma.video.update({
       where: { id: video.id },
@@ -143,10 +189,10 @@ export class PublicService {
         // Carimba o momento da aprovacao (usado nas metricas de tempo
         // medio de aprovacao). Nao mexe em outras transicoes.
         ...(status === VideoStatus.aprovado
-          ? { aprovadoEm: new Date() }
+          ? { aprovadoEm: new Date(), ...(notaGeral ? { notaGeral } : {}) }
           : {}),
       },
-      select: { id: true, status: true, aprovadoEm: true },
+      select: { id: true, status: true, aprovadoEm: true, notaGeral: true },
     });
     return updated;
   }
@@ -167,20 +213,26 @@ export class PublicService {
         statusProcessamento: true,
         versao: true,
         status: true,
+        notaGeral: true,
         criadoEm: true,
         // Somente o nome do projeto/cliente e o branding da agencia deste
         // video - nada mais e exposto.
         project: {
           select: {
             nome: true,
+            clientId: true,
+            accountId: true,
             client: { select: { nome: true } },
             account: {
               select: {
                 nomeAgencia: true,
-                // Branding (logo/cor) vem do owner da agencia.
+                // Branding (logo/cor) vem do owner da agencia. Pode haver
+                // mais de um owner - usa o mais antigo (fundador) para o
+                // branding ser estavel em vez de depender da ordem do banco.
                 users: {
                   where: { role: UserRole.owner },
                   select: { logoUrl: true, corDestaque: true },
+                  orderBy: { criadoEm: 'asc' },
                   take: 1,
                 },
               },

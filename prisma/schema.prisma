@@ -34,12 +34,6 @@ enum ProcessamentoStatus {
   erro
 }
 
-enum RatingCategory {
-  iluminacao
-  audio
-  enquadramento
-}
-
 enum InviteStatus {
   pendente
   aceito
@@ -67,29 +61,32 @@ model Account {
   nomeAgencia String   @map("nome_agencia")
   criadoEm    DateTime @default(now()) @map("criado_em")
 
-  users    User[]
-  clients  Client[]
-  projects Project[]
-  invites  Invite[]
+  users           User[]
+  clients         Client[]
+  projects        Project[]
+  invites         Invite[]
+  ratingQuestions RatingQuestion[]
 
   @@map("accounts")
 }
 
 model User {
-  id        String     @id @default(uuid())
-  accountId String     @map("account_id")
-  nome      String
-  email     String     @unique
-  senha     String
-  role      UserRole   @default(owner)
-  status    UserStatus @default(ativo)
+  id          String     @id @default(uuid())
+  accountId   String     @map("account_id")
+  nome        String
+  email       String     @unique
+  senha       String
+  role        UserRole   @default(owner)
+  status      UserStatus @default(ativo)
   // White label da agencia: logo e cor de destaque (hex) exibidos na tela do cliente
-  logoUrl     String? @map("logo_url")
-  corDestaque String? @map("cor_destaque")
-  criadoEm DateTime   @default(now()) @map("criado_em")
+  logoUrl     String?    @map("logo_url")
+  corDestaque String?    @map("cor_destaque")
+  criadoEm    DateTime   @default(now()) @map("criado_em")
 
-  account  Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  comments Comment[]
+  account           Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  comments          Comment[]
+  // Videos em que este usuario (owner ou editor) e o responsavel designado
+  videosResponsavel Video[]
 
   @@index([accountId])
   @@map("users")
@@ -110,10 +107,10 @@ model Invite {
 }
 
 model Client {
-  id        String @id @default(uuid())
+  id        String  @id @default(uuid())
   nome      String
   email     String
-  accountId String @map("account_id")
+  accountId String  @map("account_id")
   // Marca dados de exemplo criados no onboarding, para o usuario poder deletar
   isExemplo Boolean @default(false) @map("is_exemplo")
 
@@ -129,8 +126,8 @@ model Project {
   nome      String
   clientId  String   @map("client_id")
   accountId String   @map("account_id")
-  isExemplo Boolean @default(false) @map("is_exemplo")
-  criadoEm DateTime @default(now()) @map("criado_em")
+  isExemplo Boolean  @default(false) @map("is_exemplo")
+  criadoEm  DateTime @default(now()) @map("criado_em")
 
   client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -142,58 +139,65 @@ model Project {
 }
 
 model Video {
-  id          String      @id @default(uuid())
-  projectId   String      @map("project_id")
-  urlStorage  String      @map("url_storage")
-  nomeArquivo String      @map("nome_arquivo")
-  versao      Int         @default(1)
-  videoPaiId  String?     @map("video_pai_id")
-  status      VideoStatus @default(pendente)
-  linkPublico String      @unique @default(uuid()) @map("link_publico")
+  id                  String              @id @default(uuid())
+  projectId           String              @map("project_id")
+  urlStorage          String              @map("url_storage")
+  nomeArquivo         String              @map("nome_arquivo")
+  versao              Int                 @default(1)
+  videoPaiId          String?             @map("video_pai_id")
+  status              VideoStatus         @default(pendente)
+  linkPublico         String              @unique @default(uuid()) @map("link_publico")
   // Preview do WhatsApp / Open Graph: frame extraido do video
-  thumbnailUrl String? @map("thumbnail_url")
+  thumbnailUrl        String?             @map("thumbnail_url")
   // Versao comprimida para streaming web (gerada em background); original permanece em url_storage
-  urlOtimizada String? @map("url_otimizada")
+  urlOtimizada        String?             @map("url_otimizada")
   // Estado do pipeline de processamento (thumbnail + otimizacao)
   statusProcessamento ProcessamentoStatus @default(processando) @map("status_processamento")
   // Quando o cliente aprovou (para metricas de tempo de aprovacao)
-  aprovadoEm DateTime? @map("aprovado_em")
+  aprovadoEm          DateTime?           @map("aprovado_em")
   // Marca video de exemplo criado no onboarding
-  isExemplo Boolean @default(false) @map("is_exemplo")
+  isExemplo           Boolean             @default(false) @map("is_exemplo")
   // Prazo de entrega definido pelo owner. Visivel apenas para owner/editor —
   // NUNCA deve ser selecionado nas queries do canal publico (cliente).
-  deadline    DateTime?   @map("deadline")
-  criadoEm    DateTime    @default(now()) @map("criado_em")
+  deadline            DateTime?           @map("deadline")
+  // Editor (ou owner) da conta responsavel por este video. Definido pelo owner.
+  editorResponsavelId String?             @map("editor_responsavel_id")
+  // Nota geral (1-5) dada pelo cliente no momento da aprovacao. Alimenta o
+  // desempenho da equipe (media por editor responsavel).
+  notaGeral           Int?                @map("nota_geral")
+  criadoEm            DateTime            @default(now()) @map("criado_em")
 
-  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  videoPai Video?    @relation("VersionHistory", fields: [videoPaiId], references: [id], onDelete: SetNull)
-  versoes  Video[]   @relation("VersionHistory")
-  comments Comment[]
-  ratings  Rating[]
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  videoPai          Video?    @relation("VersionHistory", fields: [videoPaiId], references: [id], onDelete: SetNull)
+  versoes           Video[]   @relation("VersionHistory")
+  comments          Comment[]
+  ratings           Rating[]
+  editorResponsavel User?     @relation(fields: [editorResponsavelId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([videoPaiId])
+  @@index([editorResponsavelId])
   @@map("videos")
 }
 
 model Comment {
-  id            String   @id @default(uuid())
-  videoId       String   @map("video_id")
-  timestampVideo Int     @map("timestamp_video")
-  texto         String
+  id             String            @id @default(uuid())
+  videoId        String            @map("video_id")
+  timestampVideo Int               @map("timestamp_video")
+  texto          String
   // Canal do comentario (cliente | interno) — isola as duas conversas.
-  channel       CommentChannel    @default(cliente)
+  channel        CommentChannel    @default(cliente)
   // Tipo do autor (owner | editor | cliente).
-  autorType     CommentAuthorType @default(cliente) @map("autor_type")
+  autorType      CommentAuthorType @default(cliente) @map("autor_type")
   // Autor autenticado (owner/editor); nulo quando autor_type = cliente.
-  autorUserId   String?  @map("autor_user_id")
+  autorUserId    String?           @map("autor_user_id")
   // Nome livre do autor cliente (usado quando autor_type = cliente).
-  autorNome     String?  @map("autor_nome")
+  autorNome      String?           @map("autor_nome")
   // Resposta em thread: aponta pro comentario pai (mesmo canal).
   // Campo exposto na API como "parentId" (front so reconhece esse nome);
   // a coluna no banco permanece parent_comment_id via @map.
-  parentId String? @map("parent_comment_id")
-  criadoEm      DateTime @default(now()) @map("criado_em")
+  parentId       String?           @map("parent_comment_id")
+  criadoEm       DateTime          @default(now()) @map("criado_em")
 
   video     Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
   autorUser User?     @relation(fields: [autorUserId], references: [id], onDelete: SetNull)
@@ -207,14 +211,38 @@ model Comment {
 }
 
 model Rating {
-  id        String         @id @default(uuid())
-  videoId   String         @map("video_id")
-  categoria RatingCategory
-  nota      Int
-  criadoEm  DateTime       @default(now()) @map("criado_em")
+  id               String   @id @default(uuid())
+  videoId          String   @map("video_id")
+  ratingQuestionId String   @map("rating_question_id")
+  nota             Int
+  criadoEm         DateTime @default(now()) @map("criado_em")
 
-  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  video          Video          @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  // Restrict: nao deixa apagar uma pergunta que ja tem avaliacoes (o owner
+  // deve desativa-la com `ativo: false` em vez de excluir).
+  ratingQuestion RatingQuestion @relation(fields: [ratingQuestionId], references: [id], onDelete: Restrict)
 
   @@index([videoId])
+  @@index([ratingQuestionId])
   @@map("ratings")
+}
+
+// Pergunta de avaliacao customizavel pelo owner (substitui as categorias
+// fixas iluminacao/audio/enquadramento). Escopada por conta (agencia).
+model RatingQuestion {
+  id        String   @id @default(uuid())
+  accountId String   @map("account_id")
+  texto     String
+  // Ordem de exibicao no formulario publico do cliente.
+  ordem     Int      @default(0)
+  // Perguntas inativas somem do formulario publico mas os ratings ja dados
+  // permanecem (por isso DELETE so e permitido sem ratings associados).
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  account Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  ratings Rating[]
+
+  @@index([accountId])
+  @@map("rating_questions")
 }

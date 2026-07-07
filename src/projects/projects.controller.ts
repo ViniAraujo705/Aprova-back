@@ -59,7 +59,7 @@ export class ProjectsController {
   @Get(':id/report')
   @ApiOperation({
     summary:
-      'Gera o relatório do projeto em PDF (vídeos, status/versão, comentários por vídeo e notas médias por categoria). Download direto.',
+      'Gera o relatório do projeto em PDF (vídeos, status/versão, comentários por vídeo e notas médias por pergunta de avaliação). Download direto.',
   })
   @ApiProduces('application/pdf')
   async report(

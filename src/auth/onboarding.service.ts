@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RatingCategory, ProcessamentoStatus } from '@prisma/client';
+import { ProcessamentoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 // Asset de demonstração fixo no R2 (configurável). Se não houver URL
@@ -55,6 +55,16 @@ export class OnboardingService {
         },
       });
 
+      // As 3 perguntas de avaliacao padrao ja foram criadas junto da conta
+      // (ver AuthService.register) - reaproveita os ids pros ratings fake.
+      const ratingQuestions = await this.prisma.ratingQuestion.findMany({
+        where: { accountId },
+        orderBy: { ordem: 'asc' },
+        take: 3,
+        select: { id: true },
+      });
+      const notasFake = [5, 4, 5];
+
       await this.prisma.video.create({
         data: {
           projectId: project.id,
@@ -81,11 +91,10 @@ export class OnboardingService {
             ],
           },
           ratings: {
-            create: [
-              { categoria: RatingCategory.iluminacao, nota: 5 },
-              { categoria: RatingCategory.audio, nota: 4 },
-              { categoria: RatingCategory.enquadramento, nota: 5 },
-            ],
+            create: ratingQuestions.map((q, i) => ({
+              ratingQuestionId: q.id,
+              nota: notasFake[i] ?? 5,
+            })),
           },
         },
       });

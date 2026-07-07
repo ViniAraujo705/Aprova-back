@@ -5,6 +5,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
+import { MailModule } from './mail/mail.module';
 import { MediaModule } from './media/media.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
@@ -17,6 +18,8 @@ import { UsersModule } from './users/users.module';
 import { AccountModule } from './account/account.module';
 import { CommentsModule } from './comments/comments.module';
 import { HealthModule } from './health/health.module';
+import { RatingQuestionsModule } from './rating-questions/rating-questions.module';
+import { TeamModule } from './team/team.module';
 
 @Module({
   imports: [
@@ -43,6 +46,7 @@ import { HealthModule } from './health/health.module';
     }),
     PrismaModule,
     StorageModule,
+    MailModule,
     MediaModule,
     AuthModule,
     ClientsModule,
@@ -55,6 +59,8 @@ import { HealthModule } from './health/health.module';
     AccountModule,
     CommentsModule,
     HealthModule,
+    RatingQuestionsModule,
+    TeamModule,
   ],
   providers: [
     {

@@ -13,6 +13,7 @@ import { Throttle } from '@nestjs/throttler';
 import { PublicService } from './public.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
+import { ApproveVideoDto } from './dto/approve-video.dto';
 
 /**
  * Rotas de acesso do cliente - SEM autenticacao.
@@ -61,8 +62,9 @@ export class PublicController {
   approve(
     @Param('linkPublico', new ParseUUIDPipe({ version: '4' }))
     linkPublico: string,
+    @Body() dto: ApproveVideoDto,
   ) {
-    return this.publicService.approve(linkPublico);
+    return this.publicService.approve(linkPublico, dto);
   }
 
   @Post(':linkPublico/request-changes')

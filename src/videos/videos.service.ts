@@ -1,9 +1,10 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { VideoStatus } from '@prisma/client';
+import { UserRole, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { VideoProcessingService } from './processing/video-processing.service';
@@ -114,6 +115,39 @@ export class VideosService {
     return this.prisma.video.update({
       where: { id },
       data: { deadline: dto.deadline ? new Date(dto.deadline) : null },
+    });
+  }
+
+  /**
+   * Define/remove o editor (ou owner) responsavel pelo video. Alimenta o
+   * desempenho da equipe (media de nota geral dos videos aprovados).
+   */
+  async updateEditorResponsavel(
+    accountId: string,
+    id: string,
+    editorId: string | null,
+  ) {
+    await this.getOwnedVideo(accountId, id);
+
+    if (editorId) {
+      const membro = await this.prisma.user.findFirst({
+        where: {
+          id: editorId,
+          accountId,
+          role: { in: [UserRole.owner, UserRole.editor] },
+        },
+        select: { id: true },
+      });
+      if (!membro) {
+        throw new BadRequestException(
+          'editorId invalido ou nao pertence a esta conta',
+        );
+      }
+    }
+
+    return this.prisma.video.update({
+      where: { id },
+      data: { editorResponsavelId: editorId },
     });
   }
 

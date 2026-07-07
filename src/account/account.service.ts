@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { toMemberDto } from '../common/dto/team-role.util';
@@ -27,6 +28,7 @@ export class AccountService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly mail: MailService,
   ) {}
 
   /**
@@ -144,6 +146,58 @@ export class AccountService {
     };
   }
 
+  /**
+   * Owner cancela um convite pendente da propria conta. So convites com
+   * status pendente podem ser cancelados; ja aceitos viram 400.
+   */
+  async cancelInvite(accountId: string, inviteId: string) {
+    const invite = await this.prisma.invite.findFirst({
+      where: { id: inviteId, accountId },
+      select: { id: true, status: true },
+    });
+    if (!invite) {
+      throw new NotFoundException('Convite nao encontrado nesta conta');
+    }
+    if (invite.status !== InviteStatus.pendente) {
+      throw new BadRequestException(
+        'Convite ja foi aceito ou cancelado',
+      );
+    }
+
+    await this.prisma.invite.update({
+      where: { id: invite.id },
+      data: { status: InviteStatus.cancelado },
+    });
+  }
+
+  /**
+   * Owner dispara o e-mail real de convite (via provedor transacional) para
+   * o endereco do convite. So funciona para convites ainda pendentes.
+   */
+  async sendInviteEmail(accountId: string, inviteId: string) {
+    const invite = await this.prisma.invite.findFirst({
+      where: { id: inviteId, accountId },
+      select: { id: true, email: true, status: true, token: true },
+    });
+    if (!invite) {
+      throw new NotFoundException('Convite nao encontrado nesta conta');
+    }
+    if (invite.status !== InviteStatus.pendente) {
+      throw new ConflictException(
+        'Convite ja foi aceito ou cancelado, nao e possivel reenviar',
+      );
+    }
+
+    const inviteUrl = this.buildInviteUrl(invite.token);
+    await this.mail.send(
+      invite.email,
+      'Convite para colaborar na Aprova',
+      `Voce foi convidado(a) para colaborar como editor na APROVA. Acesse o link abaixo para criar sua senha:\n${inviteUrl}`,
+    );
+
+    return { sent: true };
+  }
+
   /** Lista os membros (owner + editores) da conta. */
   async listMembers(accountId: string) {
     const members = await this.prisma.user.findMany({
@@ -162,8 +216,10 @@ export class AccountService {
   }
 
   /**
-   * Owner remove/suspende (ou reativa) um editor da propria conta. Nao
-   * pode alterar o status de um owner (inclusive o proprio).
+   * Owner remove/suspende (ou reativa) um membro da propria conta. Editores
+   * podem ser suspensos livremente; um owner so pode ser suspenso se sobrar
+   * pelo menos outro owner ativo na conta (a conta nunca pode ficar sem
+   * nenhum owner ativo).
    */
   async setMemberStatus(
     accountId: string,
@@ -172,20 +228,64 @@ export class AccountService {
   ) {
     const member = await this.prisma.user.findFirst({
       where: { id: memberId, accountId },
-      select: { id: true, role: true },
+      select: { id: true, role: true, status: true },
     });
     if (!member) {
       throw new NotFoundException('Membro nao encontrado nesta conta');
     }
-    if (member.role !== UserRole.editor) {
-      throw new BadRequestException(
-        'Apenas editores podem ter o status alterado',
-      );
+
+    if (
+      member.role === UserRole.owner &&
+      status === UserStatus.suspenso &&
+      member.status !== UserStatus.suspenso
+    ) {
+      const outrosOwnersAtivos = await this.prisma.user.count({
+        where: {
+          accountId,
+          role: UserRole.owner,
+          status: UserStatus.ativo,
+          id: { not: member.id },
+        },
+      });
+      if (outrosOwnersAtivos === 0) {
+        throw new BadRequestException(
+          'Nao e possivel suspender o unico owner ativo da conta',
+        );
+      }
     }
 
     const updated = await this.prisma.user.update({
       where: { id: member.id },
       data: { status },
+      select: { id: true, nome: true, email: true, role: true, status: true },
+    });
+    return toMemberDto(updated);
+  }
+
+  /**
+   * Owner promove um editor ativo a owner. Nao suporta rebaixar (owner ->
+   * editor) - a conta pode ter mais de um owner simultaneamente.
+   */
+  async promoteMemberToOwner(accountId: string, memberId: string) {
+    const member = await this.prisma.user.findFirst({
+      where: { id: memberId, accountId },
+      select: { id: true, role: true, status: true },
+    });
+    if (!member) {
+      throw new NotFoundException('Membro nao encontrado nesta conta');
+    }
+    if (member.role !== UserRole.editor) {
+      throw new BadRequestException('Membro ja e owner');
+    }
+    if (member.status !== UserStatus.ativo) {
+      throw new BadRequestException(
+        'Apenas editores ativos podem ser promovidos a owner',
+      );
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: member.id },
+      data: { role: UserRole.owner },
       select: { id: true, nome: true, email: true, role: true, status: true },
     });
     return toMemberDto(updated);

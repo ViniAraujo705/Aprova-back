@@ -26,6 +26,7 @@ import { CreateVideoDto } from './dto/create-video.dto';
 import { NewVersionDto } from './dto/new-version.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateDeadlineDto } from './dto/update-deadline.dto';
+import { UpdateEditorResponsavelDto } from './dto/update-editor-responsavel.dto';
 
 @ApiTags('videos')
 @ApiBearerAuth()
@@ -89,5 +90,23 @@ export class VideosController {
     @Body() dto: UpdateDeadlineDto,
   ) {
     return this.videosService.updateDeadline(user.accountId, id, dto);
+  }
+
+  @Patch(':id/editor-responsavel')
+  @Roles(UserRole.owner)
+  @ApiOperation({
+    summary:
+      'Owner define ou remove o editor (ou owner) responsavel pelo video. Usado no desempenho da equipe.',
+  })
+  updateEditorResponsavel(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateEditorResponsavelDto,
+  ) {
+    return this.videosService.updateEditorResponsavel(
+      user.accountId,
+      id,
+      dto.editorId,
+    );
   }
 }

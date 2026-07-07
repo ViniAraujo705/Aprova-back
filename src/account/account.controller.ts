@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -11,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -23,6 +25,7 @@ import { AccountService } from './account.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { UpdateMemberStatusDto } from './dto/update-member-status.dto';
+import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 
 @ApiTags('account')
 @Controller('account')
@@ -54,6 +57,36 @@ export class AccountController {
     return this.accountService.acceptInvite(token, dto);
   }
 
+  @Delete('invite/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner)
+  @ApiOperation({ summary: 'Owner cancela um convite pendente.' })
+  cancelInvite(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.accountService.cancelInvite(user.accountId, id);
+  }
+
+  @Post('invite/:id/send-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiOperation({
+    summary:
+      'Owner dispara o envio real (via provedor transacional) do e-mail de convite pendente.',
+  })
+  sendInviteEmail(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.accountService.sendInviteEmail(user.accountId, id);
+  }
+
   @Get('members')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -76,5 +109,21 @@ export class AccountController {
     @Body() dto: UpdateMemberStatusDto,
   ) {
     return this.accountService.setMemberStatus(user.accountId, id, dto.status);
+  }
+
+  @Patch('members/:id/role')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner)
+  @ApiOperation({
+    summary:
+      'Owner promove um editor ativo a owner (nao suporta rebaixar).',
+  })
+  promoteMember(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() _dto: UpdateMemberRoleDto,
+  ) {
+    return this.accountService.promoteMemberToOwner(user.accountId, id);
   }
 }

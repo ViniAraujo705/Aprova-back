@@ -35,6 +35,9 @@ export class AuthService {
 
     // Cadastro cria a agencia (Account) + o usuario dono (owner) juntos.
     // Cada agencia comeca com um unico owner; editores entram via convite.
+    // A conta ja nasce com as 3 perguntas de avaliacao padrao (equivalentes
+    // as antigas categorias fixas) - o owner pode editar/desativar/excluir
+    // depois via /rating-questions.
     const user = await this.prisma.user.create({
       data: {
         nome: dto.nome,
@@ -42,7 +45,16 @@ export class AuthService {
         senha: senhaHash,
         role: UserRole.owner,
         account: {
-          create: { nomeAgencia: dto.nomeAgencia ?? dto.nome },
+          create: {
+            nomeAgencia: dto.nomeAgencia ?? dto.nome,
+            ratingQuestions: {
+              create: [
+                { texto: 'Iluminação', ordem: 0 },
+                { texto: 'Áudio', ordem: 1 },
+                { texto: 'Enquadramento', ordem: 2 },
+              ],
+            },
+          },
         },
       },
       select: {

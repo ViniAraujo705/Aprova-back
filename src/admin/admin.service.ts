@@ -124,6 +124,7 @@ export class AdminService {
                 users: {
                   where: { role: UserRole.owner },
                   select: { id: true, nome: true, email: true },
+                  orderBy: { criadoEm: 'asc' },
                   take: 1,
                 },
               },

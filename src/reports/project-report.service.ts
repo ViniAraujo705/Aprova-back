@@ -1,5 +1,4 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { RatingCategory } from '@prisma/client';
 import type {
   Content,
   TDocumentDefinitions,
@@ -56,7 +55,12 @@ export class ProjectReportService {
                 autorUser: { select: { nome: true } },
               },
             },
-            ratings: { select: { categoria: true, nota: true } },
+            ratings: {
+              select: {
+                nota: true,
+                ratingQuestion: { select: { texto: true, ordem: true } },
+              },
+            },
           },
         },
       },
@@ -88,7 +92,10 @@ export class ProjectReportService {
         criadoEm: Date;
         autorUser: { nome: string } | null;
       }[];
-      ratings: { categoria: RatingCategory; nota: number }[];
+      ratings: {
+        nota: number;
+        ratingQuestion: { texto: string; ordem: number };
+      }[];
     }[];
   }): TDocumentDefinitions {
     const content: Content[] = [
@@ -132,7 +139,7 @@ export class ProjectReportService {
         margin: [0, 0, 0, 6],
       });
 
-      // Notas médias por categoria
+      // Notas médias por pergunta de avaliação
       content.push(this.ratingsBlock(video.ratings));
 
       // Comentários agrupados por vídeo
@@ -184,29 +191,45 @@ export class ProjectReportService {
   }
 
   private ratingsBlock(
-    ratings: { categoria: RatingCategory; nota: number }[],
+    ratings: {
+      nota: number;
+      ratingQuestion: { texto: string; ordem: number };
+    }[],
   ): Content {
-    const categorias = Object.values(RatingCategory);
+    if (ratings.length === 0) {
+      return {
+        text: 'Sem avaliações.',
+        italics: true,
+        style: 'small',
+        margin: [0, 2, 0, 2],
+      };
+    }
+
+    // Agrupa dinamicamente pelas perguntas de avaliacao respondidas neste
+    // video (perguntas sao customizaveis por conta, nao mais fixas).
+    const porPergunta = new Map<string, { ordem: number; notas: number[] }>();
+    for (const r of ratings) {
+      const atual = porPergunta.get(r.ratingQuestion.texto) ?? {
+        ordem: r.ratingQuestion.ordem,
+        notas: [],
+      };
+      atual.notas.push(r.nota);
+      porPergunta.set(r.ratingQuestion.texto, atual);
+    }
+    const perguntas = [...porPergunta.entries()].sort(
+      (a, b) => a[1].ordem - b[1].ordem,
+    );
+
     const body: Content[][] = [
-      categorias.map((cat) => ({
-        text: this.capitalize(cat),
-        bold: true,
-        fontSize: 9,
+      perguntas.map(([texto]) => ({ text: texto, bold: true, fontSize: 9 })),
+      perguntas.map(([, { notas }]) => ({
+        text: (notas.reduce((a, b) => a + b, 0) / notas.length).toFixed(1),
+        fontSize: 10,
       })),
-      categorias.map((cat) => {
-        const notas = ratings
-          .filter((r) => r.categoria === cat)
-          .map((r) => r.nota);
-        const media =
-          notas.length > 0
-            ? (notas.reduce((a, b) => a + b, 0) / notas.length).toFixed(1)
-            : '—';
-        return { text: `${media}`, fontSize: 10 };
-      }),
     ];
 
     return {
-      table: { widths: categorias.map(() => '*'), body },
+      table: { widths: perguntas.map(() => '*'), body },
       layout: 'lightHorizontalLines',
       margin: [0, 2, 0, 2],
     };
@@ -230,10 +253,6 @@ export class ProjectReportService {
       hour: '2-digit',
       minute: '2-digit',
     });
-  }
-
-  private capitalize(s: string): string {
-    return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
   private slug(s: string): string {
