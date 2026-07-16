@@ -1,7 +1,7 @@
 {
-  "name": "aprova-backend",
+  "name": "vistoow-backend",
   "version": "1.0.0",
-  "description": "Backend do Aprova - sistema de aprovacao de videos entre profissionais de marketing e clientes",
+  "description": "Backend do Vistoow - sistema de aprovacao de videos entre profissionais de marketing e clientes",
   "author": "",
   "private": true,
   "license": "UNLICENSED",

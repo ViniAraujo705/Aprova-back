@@ -1,4 +1,4 @@
-# Aprova — Backend
+# Vistoow — Backend
 
 Sistema de aprovação de vídeos entre profissionais de marketing e seus clientes.
 
@@ -70,8 +70,8 @@ não-root. Para rodar só a imagem de produção (ex.: atrás de um orquestrador
 que já cuida de Postgres/Redis):
 
 ```bash
-docker build -t aprova-backend --target runtime .
-docker run --env-file .env -p 3000:3000 aprova-backend
+docker build -t vistoow-backend --target runtime .
+docker run --env-file .env -p 3000:3000 vistoow-backend
 ```
 
 > `docker compose up --build` foi validado fim-a-fim (build, migrations,
@@ -101,7 +101,7 @@ docker run --env-file .env -p 3000:3000 aprova-backend
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Conexão do Redis (fila BullMQ). Padrão `127.0.0.1:6379`, senha opcional |
 | `DEMO_VIDEO_URL` / `DEMO_THUMBNAIL_URL` | Asset de demonstração usado no vídeo de exemplo do onboarding |
 | `RESEND_API_KEY` | Chave da API do Resend, usada para reenviar o e-mail de convite. Sem ela, o envio é apenas simulado via log |
-| `MAIL_FROM` | Remetente usado no envio de e-mail transacional (padrão `Aprova <no-reply@aprova.app>`) |
+| `MAIL_FROM` | Remetente usado no envio de e-mail transacional (padrão `Vistoow <no-reply@aprova.app>`) |
 | `PORT` | Porta do servidor (padrão `3000`) |
 | `CORS_ORIGIN` | Origem(ns) do frontend, separadas por vírgula |
 

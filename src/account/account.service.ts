@@ -185,7 +185,7 @@ export class AccountService {
     const inviteUrl = this.buildInviteUrl(invite.token);
     await this.mail.send(
       invite.email,
-      'Convite para colaborar na Aprova',
+      'Convite para colaborar na Vistoow',
       `Voce foi convidado(a) para colaborar como editor na APROVA. Acesse o link abaixo para criar sua senha:\n${inviteUrl}`,
     );
 

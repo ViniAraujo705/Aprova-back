@@ -1,4 +1,4 @@
-# API do Aprova — Guia para o Frontend
+# API do Vistoow — Guia para o Frontend
 
 Referência completa de todos os endpoints do backend: como autenticar, o que
 enviar e o que esperar de volta. Gerado a partir do código-fonte em

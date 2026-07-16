@@ -151,7 +151,7 @@ export class AuthService {
       try {
         await this.mail.send(
           user.email,
-          'Redefinicao de senha - Aprova',
+          'Redefinicao de senha - Vistoow',
           `Recebemos um pedido para redefinir sua senha. Acesse o link abaixo (valido por 1 hora):\n${resetUrl}\n\nSe voce nao pediu isso, ignore este email.`,
         );
       } catch (err) {

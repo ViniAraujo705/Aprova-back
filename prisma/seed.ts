@@ -36,7 +36,7 @@ async function main() {
       senha: senhaHash,
       role: UserRole.admin,
       account: {
-        create: { nomeAgencia: 'Aprova (admin)' },
+        create: { nomeAgencia: 'Vistoow (admin)' },
       },
     },
   });

@@ -45,9 +45,9 @@ async function bootstrap() {
 
   if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('Aprova API')
+      .setTitle('Vistoow API')
       .setDescription(
-        'Backend do Aprova - aprovacao de videos entre profissionais e clientes.',
+        'Backend do Vistoow - aprovacao de videos entre profissionais e clientes.',
       )
       .setVersion('1.0')
       .addBearerAuth()
@@ -58,7 +58,7 @@ async function bootstrap() {
 
   const port = config.get<number>('PORT') ?? 3000;
   await app.listen(port);
-  console.log(`Aprova backend rodando em http://localhost:${port}/api`);
+  console.log(`Vistoow backend rodando em http://localhost:${port}/api`);
   if (swaggerEnabled) {
     console.log(`Swagger: http://localhost:${port}/api/docs`);
   }
