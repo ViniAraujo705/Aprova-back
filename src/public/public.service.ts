@@ -15,6 +15,65 @@ export class PublicService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Galeria publica do projeto: lista todos os videos de uma vez a partir
+   * de um unico link (link_publico do Project), para o cliente nao precisar
+   * entrar video por video. Cada item aponta pro link_publico do video, que
+   * continua sendo o ponto de entrada do player/aprovacao/comentarios.
+   */
+  async getProject(linkPublico: string) {
+    const project = await this.prisma.project.findUnique({
+      where: { linkPublico },
+      select: {
+        nome: true,
+        client: { select: { nome: true } },
+        account: {
+          select: {
+            nomeAgencia: true,
+            users: {
+              where: { role: UserRole.owner },
+              select: { logoUrl: true, corDestaque: true },
+              orderBy: { criadoEm: 'asc' },
+              take: 1,
+            },
+          },
+        },
+        videos: {
+          orderBy: { criadoEm: 'asc' },
+          select: {
+            linkPublico: true,
+            nomeArquivo: true,
+            thumbnailUrl: true,
+            status: true,
+            statusProcessamento: true,
+            versao: true,
+          },
+        },
+      },
+    });
+    if (!project) {
+      throw new NotFoundException('Projeto nao encontrado');
+    }
+
+    return {
+      projeto: { nome: project.nome },
+      cliente: { nome: project.client.nome },
+      agencia: {
+        nome: project.account.nomeAgencia,
+        logoUrl: project.account.users[0]?.logoUrl ?? null,
+        corDestaque: project.account.users[0]?.corDestaque ?? null,
+      },
+      videos: project.videos.map((v) => ({
+        link: v.linkPublico,
+        title: v.nomeArquivo,
+        posterUrl: v.thumbnailUrl,
+        status: v.status,
+        statusProcessamento: v.statusProcessamento,
+        versao: v.versao,
+      })),
+    };
+  }
+
+  /**
    * Retorna apenas os dados do video referenciado pelo link_publico,
    * seus comentarios e ratings. Nenhum dado de outros videos, projetos
    * ou do profissional e exposto.
@@ -52,11 +111,13 @@ export class PublicService {
         },
       }),
       // Fila para o swipe "Preview Reels": todos os videos do mesmo
-      // cliente (escopo resolvido a partir do video atual, nunca de um
+      // projeto (escopo resolvido a partir do video atual, nunca de um
       // parametro da request), incluindo o proprio video atual - o front
-      // localiza a posicao via linkPublico para navegar prev/next.
+      // localiza a posicao via linkPublico para navegar prev/next. Escopo
+      // e o projeto (nao o cliente inteiro) para o reels nao vazar para
+      // entregas antigas de outros projetos do mesmo cliente.
       this.prisma.video.findMany({
-        where: { project: { clientId: video.project.clientId } },
+        where: { projectId: video.projectId },
         orderBy: { criadoEm: 'asc' },
         select: {
           linkPublico: true,
@@ -215,12 +276,13 @@ export class PublicService {
         status: true,
         notaGeral: true,
         criadoEm: true,
+        // Usado so internamente para escopar a queue (nunca vai na resposta).
+        projectId: true,
         // Somente o nome do projeto/cliente e o branding da agencia deste
         // video - nada mais e exposto.
         project: {
           select: {
             nome: true,
-            clientId: true,
             accountId: true,
             client: { select: { nome: true } },
             account: {

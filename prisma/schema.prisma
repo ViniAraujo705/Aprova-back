@@ -140,12 +140,15 @@ model Client {
 }
 
 model Project {
-  id        String   @id @default(uuid())
-  nome      String
-  clientId  String   @map("client_id")
-  accountId String   @map("account_id")
-  isExemplo Boolean  @default(false) @map("is_exemplo")
-  criadoEm  DateTime @default(now()) @map("criado_em")
+  id          String   @id @default(uuid())
+  nome        String
+  clientId    String   @map("client_id")
+  accountId   String   @map("account_id")
+  isExemplo   Boolean  @default(false) @map("is_exemplo")
+  // Link unico da galeria publica: todos os videos do projeto num so link,
+  // para o cliente nao precisar entrar video por video (ver PublicService).
+  linkPublico String   @unique @default(uuid()) @map("link_publico")
+  criadoEm    DateTime @default(now()) @map("criado_em")
 
   client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
