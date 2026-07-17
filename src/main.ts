@@ -1,14 +1,23 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
+
+  // Atras do proxy do Railway (ou qualquer PaaS): sem isso, req.ip sempre
+  // retorna o IP do proxy, quebrando o rate limit por cliente (Throttler).
+  app.set('trust proxy', 1);
+
+  // Garante que onModuleDestroy (ex.: PrismaService.$disconnect) rode ao
+  // receber SIGTERM/SIGINT - necessario pra encerrar limpo em redeploys.
+  app.enableShutdownHooks();
 
   app.use(helmet());
 
