@@ -54,6 +54,13 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 # Prisma Client gerado no stage "build" (engine compativel com esta mesma
 # imagem base) - a instalacao de producao acima nao roda `prisma generate`.
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+# Prisma CLI + engines tambem vem do stage "build" (que ja rodou
+# `prisma generate` e baixou os binarios). Sem isso, "prisma migrate deploy"
+# em runtime tentaria baixar o engine sob demanda e falharia: a imagem final
+# roda como usuario nao-root e o filesystem nao deve ser gravavel.
+COPY --from=build /app/node_modules/prisma ./node_modules/prisma
+COPY --from=build /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+COPY --from=build /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY prisma ./prisma
@@ -64,4 +71,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=10s \
   CMD node -e "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "node node_modules/.bin/prisma migrate deploy && node dist/main"]
