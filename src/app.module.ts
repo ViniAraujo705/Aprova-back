@@ -20,6 +20,7 @@ import { CommentsModule } from './comments/comments.module';
 import { HealthModule } from './health/health.module';
 import { RatingQuestionsModule } from './rating-questions/rating-questions.module';
 import { TeamModule } from './team/team.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { TeamModule } from './team/team.module';
     HealthModule,
     RatingQuestionsModule,
     TeamModule,
+    NotificationsModule,
   ],
   providers: [
     {

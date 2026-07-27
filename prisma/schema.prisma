@@ -54,6 +54,14 @@ enum CommentAuthorType {
   cliente
 }
 
+// Eventos do cliente que geram notificacao para o owner/editor responsavel.
+enum NotificationType {
+  comentario_cliente
+  aprovacao_cliente
+  ajuste_solicitado
+  avaliacao_cliente
+}
+
 // Conta = agencia. Agrupa os usuarios (owner + editores) e todos os
 // clientes/projetos compartilhados por eles.
 model Account {
@@ -66,6 +74,7 @@ model Account {
   projects        Project[]
   invites         Invite[]
   ratingQuestions RatingQuestion[]
+  notifications   Notification[]
 
   @@map("accounts")
 }
@@ -88,6 +97,7 @@ model User {
   // Videos em que este usuario (owner ou editor) e o responsavel designado
   videosResponsavel   Video[]
   passwordResetTokens PasswordResetToken[]
+  notifications       Notification[]
 
   @@index([accountId])
   @@map("users")
@@ -192,12 +202,13 @@ model Video {
   notaGeral           Int?                @map("nota_geral")
   criadoEm            DateTime            @default(now()) @map("criado_em")
 
-  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  videoPai          Video?    @relation("VersionHistory", fields: [videoPaiId], references: [id], onDelete: SetNull)
-  versoes           Video[]   @relation("VersionHistory")
+  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  videoPai          Video?         @relation("VersionHistory", fields: [videoPaiId], references: [id], onDelete: SetNull)
+  versoes           Video[]        @relation("VersionHistory")
   comments          Comment[]
   ratings           Rating[]
-  editorResponsavel User?     @relation(fields: [editorResponsavelId], references: [id], onDelete: SetNull)
+  editorResponsavel User?          @relation(fields: [editorResponsavelId], references: [id], onDelete: SetNull)
+  notifications     Notification[]
 
   @@index([projectId])
   @@index([videoPaiId])
@@ -270,4 +281,25 @@ model RatingQuestion {
 
   @@index([accountId])
   @@map("rating_questions")
+}
+
+// Notificacao in-app para o owner/editor responsavel ficarem cientes de
+// acoes do cliente (comentario, aprovacao, ajuste, avaliacao) num video.
+model Notification {
+  id        String           @id @default(uuid())
+  accountId String           @map("account_id")
+  userId    String           @map("user_id")
+  videoId   String           @map("video_id")
+  type      NotificationType
+  lida      Boolean          @default(false)
+  criadoEm  DateTime         @default(now()) @map("criado_em")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video   Video   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lida])
+  @@index([accountId])
+  @@index([videoId])
+  @@map("notifications")
 }

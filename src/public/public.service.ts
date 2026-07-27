@@ -2,17 +2,22 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   CommentAuthorType,
   CommentChannel,
+  NotificationType,
   UserRole,
   VideoStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { ApproveVideoDto } from './dto/approve-video.dto';
 
 @Injectable()
 export class PublicService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /**
    * Galeria publica do projeto: lista todos os videos de uma vez a partir
@@ -183,7 +188,7 @@ export class PublicService {
 
   async addComment(linkPublico: string, dto: CreateCommentDto) {
     const video = await this.resolveVideo(linkPublico);
-    return this.prisma.comment.create({
+    const comment = await this.prisma.comment.create({
       data: {
         videoId: video.id,
         timestampVideo: dto.timestampVideo,
@@ -203,6 +208,11 @@ export class PublicService {
         criadoEm: true,
       },
     });
+    await this.notifications.notify(
+      video.id,
+      NotificationType.comentario_cliente,
+    );
+    return comment;
   }
 
   async addRating(linkPublico: string, dto: CreateRatingDto) {
@@ -218,7 +228,7 @@ export class PublicService {
       throw new NotFoundException('Pergunta de avaliacao nao encontrada');
     }
 
-    return this.prisma.rating.create({
+    const rating = await this.prisma.rating.create({
       data: {
         videoId: video.id,
         ratingQuestionId: dto.ratingQuestionId,
@@ -231,14 +241,33 @@ export class PublicService {
         criadoEm: true,
       },
     });
+    await this.notifications.notify(
+      video.id,
+      NotificationType.avaliacao_cliente,
+    );
+    return rating;
   }
 
-  approve(linkPublico: string, dto: ApproveVideoDto) {
-    return this.setStatus(linkPublico, VideoStatus.aprovado, dto.notaGeral);
+  async approve(linkPublico: string, dto: ApproveVideoDto) {
+    const updated = await this.setStatus(
+      linkPublico,
+      VideoStatus.aprovado,
+      dto.notaGeral,
+    );
+    await this.notifications.notify(
+      updated.id,
+      NotificationType.aprovacao_cliente,
+    );
+    return updated;
   }
 
-  requestChanges(linkPublico: string) {
-    return this.setStatus(linkPublico, VideoStatus.ajuste);
+  async requestChanges(linkPublico: string) {
+    const updated = await this.setStatus(linkPublico, VideoStatus.ajuste);
+    await this.notifications.notify(
+      updated.id,
+      NotificationType.ajuste_solicitado,
+    );
+    return updated;
   }
 
   private async setStatus(
