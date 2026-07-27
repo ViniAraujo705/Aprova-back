@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { CreateInternalCommentDto } from './dto/create-internal-comment.dto';
 import { ClientReplyDto } from './dto/client-reply.dto';
+import { MoveCommentDto } from './dto/move-comment.dto';
 
 // Campos retornados em qualquer leitura/criacao de comentario autenticado.
 const COMMENT_SELECT = {
@@ -123,6 +124,92 @@ export class CommentsService {
       select: COMMENT_SELECT,
     });
     return toCommentDto(comment);
+  }
+
+  /**
+   * Canal CLIENTE — exclui um comentario do cliente (usado pelo owner/editor
+   * para moderar o canal do cliente). Nao afeta o canal interno.
+   */
+  async deleteClientComment(
+    accountId: string,
+    videoId: string,
+    commentId: string,
+  ) {
+    await this.assertVideoInAccount(accountId, videoId);
+    const comment = await this.assertClientComment(videoId, commentId);
+    await this.prisma.comment.delete({ where: { id: comment.id } });
+  }
+
+  /**
+   * Move um comentario do cliente (canal cliente) para o canal interno de
+   * outro video da MESMA conta, recriando-o com autor_type = cliente para
+   * preservar o badge "Cliente" na thread interna.
+   */
+  async moveToInternal(
+    accountId: string,
+    videoId: string,
+    commentId: string,
+    dto: MoveCommentDto,
+  ) {
+    await this.assertVideoInAccount(accountId, videoId);
+    const comment = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+      select: {
+        id: true,
+        videoId: true,
+        channel: true,
+        timestampVideo: true,
+        texto: true,
+        autorNome: true,
+      },
+    });
+    if (!comment || comment.videoId !== videoId) {
+      throw new NotFoundException('Comentario nao encontrado');
+    }
+    if (comment.channel !== CommentChannel.cliente) {
+      throw new BadRequestException(
+        'Comentario nao pertence ao canal do cliente',
+      );
+    }
+    // Garante que o video de destino existe e pertence a mesma conta.
+    await this.assertVideoInAccount(accountId, dto.videoDestinoId);
+
+    const moved = await this.prisma.$transaction(async (tx) => {
+      await tx.comment.delete({ where: { id: comment.id } });
+      return tx.comment.create({
+        data: {
+          videoId: dto.videoDestinoId,
+          timestampVideo: comment.timestampVideo,
+          texto: comment.texto,
+          channel: CommentChannel.interno,
+          autorType: CommentAuthorType.cliente,
+          autorNome: comment.autorNome,
+          parentId: null,
+        },
+        select: COMMENT_SELECT,
+      });
+    });
+    return toCommentDto(moved);
+  }
+
+  /**
+   * Garante que o comentario existe, pertence ao video informado e esta no
+   * canal do cliente (as unicas operacoes de exclusao/mover suportadas).
+   */
+  private async assertClientComment(videoId: string, commentId: string) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+      select: { id: true, videoId: true, channel: true },
+    });
+    if (!comment || comment.videoId !== videoId) {
+      throw new NotFoundException('Comentario nao encontrado');
+    }
+    if (comment.channel !== CommentChannel.cliente) {
+      throw new BadRequestException(
+        'Comentario nao pertence ao canal do cliente',
+      );
+    }
+    return comment;
   }
 
   /**

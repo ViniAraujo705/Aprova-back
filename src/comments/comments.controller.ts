@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
@@ -19,6 +21,7 @@ import {
 import { CommentsService } from './comments.service';
 import { CreateInternalCommentDto } from './dto/create-internal-comment.dto';
 import { ClientReplyDto } from './dto/client-reply.dto';
+import { MoveCommentDto } from './dto/move-comment.dto';
 
 /**
  * Canais de comentario autenticados de um video. O isolamento por conta
@@ -75,5 +78,43 @@ export class CommentsController {
     @Body() dto: ClientReplyDto,
   ) {
     return this.commentsService.clientReply(user.accountId, user, videoId, dto);
+  }
+
+  @Delete(':commentId')
+  @Roles(UserRole.owner, UserRole.editor)
+  @HttpCode(204)
+  @ApiOperation({
+    summary: 'Canal CLIENTE: exclui um comentário do cliente (owner/editor).',
+  })
+  deleteClientComment(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) videoId: string,
+    @Param('commentId', new ParseUUIDPipe({ version: '4' })) commentId: string,
+  ) {
+    return this.commentsService.deleteClientComment(
+      user.accountId,
+      videoId,
+      commentId,
+    );
+  }
+
+  @Post(':commentId/move')
+  @Roles(UserRole.owner, UserRole.editor)
+  @ApiOperation({
+    summary:
+      'Canal CLIENTE: move um comentário do cliente para o canal INTERNO de outro vídeo da mesma conta, preservando autor_type = cliente.',
+  })
+  moveComment(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) videoId: string,
+    @Param('commentId', new ParseUUIDPipe({ version: '4' })) commentId: string,
+    @Body() dto: MoveCommentDto,
+  ) {
+    return this.commentsService.moveToInternal(
+      user.accountId,
+      videoId,
+      commentId,
+      dto,
+    );
   }
 }
