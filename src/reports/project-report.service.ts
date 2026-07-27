@@ -76,7 +76,7 @@ export class ProjectReportService {
   private buildDocDefinition(project: {
     nome: string;
     criadoEm: Date;
-    client: { nome: string; email: string };
+    client: { nome: string; email: string | null };
     videos: {
       nomeArquivo: string;
       versao: number;
@@ -102,7 +102,9 @@ export class ProjectReportService {
         style: 'meta',
         text: [
           { text: 'Cliente: ', bold: true },
-          `${project.client.nome} (${project.client.email})\n`,
+          project.client.email
+            ? `${project.client.nome} (${project.client.email})\n`
+            : `${project.client.nome}\n`,
           { text: 'Gerado em: ', bold: true },
           this.formatDate(new Date()),
         ],

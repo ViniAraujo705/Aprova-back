@@ -127,7 +127,7 @@ model Invite {
 model Client {
   id        String  @id @default(uuid())
   nome      String
-  email     String
+  email     String?
   accountId String  @map("account_id")
   // Marca dados de exemplo criados no onboarding, para o usuario poder deletar
   isExemplo Boolean @default(false) @map("is_exemplo")
