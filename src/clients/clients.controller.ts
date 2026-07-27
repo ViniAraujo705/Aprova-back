@@ -3,12 +3,14 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -20,6 +22,7 @@ import {
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
+import { ClientPhotoUploadUrlDto } from './dto/client-photo-upload-url.dto';
 
 @ApiTags('clients')
 @ApiBearerAuth()
@@ -56,5 +59,15 @@ export class ClientsController {
   @Delete(':id')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.clientsService.remove(user.accountId, id);
+  }
+
+  @Post(':id/photo-upload-url')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Gera uma presigned URL para o upload da foto do cliente (R2). O frontend faz PUT direto na uploadUrl.',
+  })
+  createPhotoUploadUrl(@Body() dto: ClientPhotoUploadUrlDto) {
+    return this.clientsService.createPhotoUploadUrl(dto);
   }
 }

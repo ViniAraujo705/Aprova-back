@@ -152,7 +152,11 @@ export class PublicService {
       // Dados para montar a visualizacao "Preview Reels" e as Open Graph
       // tags (preview do WhatsApp) no frontend
       projeto: { nome: video.project.nome },
-      cliente: { nome: video.project.client.nome },
+      cliente: {
+        nome: video.project.client.nome,
+        descricao: video.project.client.descricao,
+        fotoUrl: video.project.client.fotoUrl,
+      },
       // Branding (white label) da agencia dona do video. O nome vem da
       // conta; logo/cor vem do owner da agencia.
       agencia: {
@@ -284,7 +288,9 @@ export class PublicService {
           select: {
             nome: true,
             accountId: true,
-            client: { select: { nome: true } },
+            client: {
+              select: { nome: true, descricao: true, fotoUrl: true },
+            },
             account: {
               select: {
                 nomeAgencia: true,

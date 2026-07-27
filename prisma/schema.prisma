@@ -128,6 +128,10 @@ model Client {
   id        String  @id @default(uuid())
   nome      String
   email     String?
+  // Legenda exibida no modo "Preview Reels" da galeria publica
+  descricao String?
+  // Foto do cliente (avatar), exibida no modo "Preview Reels"
+  fotoUrl   String? @map("foto_url")
   accountId String  @map("account_id")
   // Marca dados de exemplo criados no onboarding, para o usuario poder deletar
   isExemplo Boolean @default(false) @map("is_exemplo")

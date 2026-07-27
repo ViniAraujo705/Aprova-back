@@ -8,4 +8,12 @@ export class CreateClientDto {
   @IsOptional()
   @IsEmail({}, { message: 'Email invalido' })
   email?: string;
+
+  @IsOptional()
+  @IsString()
+  descricao?: string;
+
+  @IsOptional()
+  @IsString()
+  fotoUrl?: string;
 }
