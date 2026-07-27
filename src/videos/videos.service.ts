@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { UserRole, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { createWithUniqueLinkPublico } from '../common/short-id.util';
 import { StorageService } from '../storage/storage.service';
 import { VideoProcessingService } from './processing/video-processing.service';
 import { UploadUrlDto } from './dto/upload-url.dto';
@@ -39,16 +40,19 @@ export class VideosService {
       versao = last ? last.versao + 1 : 1;
     }
 
-    const video = await this.prisma.video.create({
-      data: {
-        projectId: dto.projectId,
-        urlStorage: dto.urlStorage,
-        nomeArquivo: dto.nomeArquivo,
-        versao,
-        // status default = pendente; link_publico default = uuid (schema)
-        // status_processamento default = processando (schema)
-      },
-    });
+    const video = await createWithUniqueLinkPublico((linkPublico) =>
+      this.prisma.video.create({
+        data: {
+          projectId: dto.projectId,
+          urlStorage: dto.urlStorage,
+          nomeArquivo: dto.nomeArquivo,
+          versao,
+          linkPublico,
+          // status default = pendente (schema)
+          // status_processamento default = processando (schema)
+        },
+      }),
+    );
 
     // Dispara thumbnail + versão otimizada em background (não bloqueia a resposta)
     await this.processing.enqueue(video.id);
@@ -65,15 +69,18 @@ export class VideosService {
   async createNewVersion(accountId: string, paiId: string, dto: NewVersionDto) {
     const pai = await this.getOwnedVideo(accountId, paiId);
 
-    const video = await this.prisma.video.create({
-      data: {
-        projectId: pai.projectId,
-        urlStorage: dto.urlStorage,
-        nomeArquivo: dto.nomeArquivo,
-        versao: pai.versao + 1,
-        videoPaiId: pai.id,
-      },
-    });
+    const video = await createWithUniqueLinkPublico((linkPublico) =>
+      this.prisma.video.create({
+        data: {
+          projectId: pai.projectId,
+          urlStorage: dto.urlStorage,
+          nomeArquivo: dto.nomeArquivo,
+          versao: pai.versao + 1,
+          videoPaiId: pai.id,
+          linkPublico,
+        },
+      }),
+    );
 
     await this.processing.enqueue(video.id);
 

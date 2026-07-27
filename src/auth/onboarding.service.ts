@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ProcessamentoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { createWithUniqueLinkPublico } from '../common/short-id.util';
 
 // Asset de demonstração fixo no R2 (configurável). Se não houver URL
 // configurada, usa um placeholder — o importante é o usuário ver o
@@ -46,14 +47,17 @@ export class OnboardingService {
         },
       });
 
-      const project = await this.prisma.project.create({
-        data: {
-          nome: 'Projeto Exemplo',
-          clientId: client.id,
-          accountId,
-          isExemplo: true,
-        },
-      });
+      const project = await createWithUniqueLinkPublico((linkPublico) =>
+        this.prisma.project.create({
+          data: {
+            nome: 'Projeto Exemplo',
+            clientId: client.id,
+            accountId,
+            isExemplo: true,
+            linkPublico,
+          },
+        }),
+      );
 
       // As 3 perguntas de avaliacao padrao ja foram criadas junto da conta
       // (ver AuthService.register) - reaproveita os ids pros ratings fake.
@@ -65,40 +69,43 @@ export class OnboardingService {
       });
       const notasFake = [5, 4, 5];
 
-      await this.prisma.video.create({
-        data: {
-          projectId: project.id,
-          urlStorage: demoVideoUrl,
-          nomeArquivo: 'video-exemplo.mp4',
-          versao: 1,
-          isExemplo: true,
-          // O asset de demo já vem pronto — não precisa passar pelo worker
-          thumbnailUrl: demoThumbUrl,
-          urlOtimizada: demoVideoUrl,
-          statusProcessamento: ProcessamentoStatus.pronto,
-          comments: {
-            create: [
-              {
-                timestampVideo: 3,
-                texto:
-                  'Curti a abertura! Podemos deixar a logo um pouco maior?',
-                autorNome: 'Cliente Exemplo',
-              },
-              {
-                timestampVideo: 12,
-                texto: 'O áudio ficou ótimo aqui.',
-                autorNome: 'Cliente Exemplo',
-              },
-            ],
+      await createWithUniqueLinkPublico((linkPublico) =>
+        this.prisma.video.create({
+          data: {
+            projectId: project.id,
+            urlStorage: demoVideoUrl,
+            nomeArquivo: 'video-exemplo.mp4',
+            versao: 1,
+            isExemplo: true,
+            linkPublico,
+            // O asset de demo já vem pronto — não precisa passar pelo worker
+            thumbnailUrl: demoThumbUrl,
+            urlOtimizada: demoVideoUrl,
+            statusProcessamento: ProcessamentoStatus.pronto,
+            comments: {
+              create: [
+                {
+                  timestampVideo: 3,
+                  texto:
+                    'Curti a abertura! Podemos deixar a logo um pouco maior?',
+                  autorNome: 'Cliente Exemplo',
+                },
+                {
+                  timestampVideo: 12,
+                  texto: 'O áudio ficou ótimo aqui.',
+                  autorNome: 'Cliente Exemplo',
+                },
+              ],
+            },
+            ratings: {
+              create: ratingQuestions.map((q, i) => ({
+                ratingQuestionId: q.id,
+                nota: notasFake[i] ?? 5,
+              })),
+            },
           },
-          ratings: {
-            create: ratingQuestions.map((q, i) => ({
-              ratingQuestionId: q.id,
-              nota: notasFake[i] ?? 5,
-            })),
-          },
-        },
-      });
+        }),
+      );
 
       this.logger.log(`Dados de exemplo criados para a conta ${accountId}.`);
     } catch (err) {

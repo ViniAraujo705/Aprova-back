@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { createWithUniqueLinkPublico } from '../common/short-id.util';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 
@@ -13,13 +14,16 @@ export class ProjectsService {
 
   async create(accountId: string, dto: CreateProjectDto) {
     await this.assertClientOwnership(accountId, dto.clientId);
-    return this.prisma.project.create({
-      data: {
-        nome: dto.nome,
-        clientId: dto.clientId,
-        accountId,
-      },
-    });
+    return createWithUniqueLinkPublico((linkPublico) =>
+      this.prisma.project.create({
+        data: {
+          nome: dto.nome,
+          clientId: dto.clientId,
+          accountId,
+          linkPublico,
+        },
+      }),
+    );
   }
 
   findAll(accountId: string) {

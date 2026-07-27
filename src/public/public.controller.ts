@@ -5,7 +5,6 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -17,7 +16,9 @@ import { ApproveVideoDto } from './dto/approve-video.dto';
 
 /**
  * Rotas de acesso do cliente - SEM autenticacao.
- * O identificador e sempre o link_publico (uuid) do video.
+ * O identificador e sempre o link_publico do video. Formato opaco - pode
+ * ser um UUID (links antigos) ou um id curto (links novos, ver
+ * short-id.util.ts).
  */
 @ApiTags('public')
 @Controller('public/videos')
@@ -29,18 +30,14 @@ export class PublicController {
     summary:
       'Dados públicos do vídeo: thumbnail, projeto/cliente, branding da agência (Open Graph) + comentários e ratings.',
   })
-  getVideo(
-    @Param('linkPublico', new ParseUUIDPipe({ version: '4' }))
-    linkPublico: string,
-  ) {
+  getVideo(@Param('linkPublico') linkPublico: string) {
     return this.publicService.getVideo(linkPublico);
   }
 
   @Post(':linkPublico/comments')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   addComment(
-    @Param('linkPublico', new ParseUUIDPipe({ version: '4' }))
-    linkPublico: string,
+    @Param('linkPublico') linkPublico: string,
     @Body() dto: CreateCommentDto,
   ) {
     return this.publicService.addComment(linkPublico, dto);
@@ -49,8 +46,7 @@ export class PublicController {
   @Post(':linkPublico/ratings')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   addRating(
-    @Param('linkPublico', new ParseUUIDPipe({ version: '4' }))
-    linkPublico: string,
+    @Param('linkPublico') linkPublico: string,
     @Body() dto: CreateRatingDto,
   ) {
     return this.publicService.addRating(linkPublico, dto);
@@ -60,8 +56,7 @@ export class PublicController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   approve(
-    @Param('linkPublico', new ParseUUIDPipe({ version: '4' }))
-    linkPublico: string,
+    @Param('linkPublico') linkPublico: string,
     @Body() dto: ApproveVideoDto,
   ) {
     return this.publicService.approve(linkPublico, dto);
@@ -70,10 +65,7 @@ export class PublicController {
   @Post(':linkPublico/request-changes')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
-  requestChanges(
-    @Param('linkPublico', new ParseUUIDPipe({ version: '4' }))
-    linkPublico: string,
-  ) {
+  requestChanges(@Param('linkPublico') linkPublico: string) {
     return this.publicService.requestChanges(linkPublico);
   }
 }

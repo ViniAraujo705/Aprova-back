@@ -244,7 +244,7 @@ Body: `{ "editorId": "uuid" | null }`
   "versao": 1,
   "videoPaiId": null,
   "status": "pendente",
-  "linkPublico": "uuid",
+  "linkPublico": "aB3xQ9kZ2m",
   "thumbnailUrl": null,
   "urlOtimizada": null,
   "statusProcessamento": "processando",
@@ -257,7 +257,9 @@ Body: `{ "editorId": "uuid" | null }`
 }
 ```
 `linkPublico` é o identificador a compartilhar com o cliente
-(`/public/videos/:linkPublico` — ver seção própria). `notaGeral` (1–5) só é
+(`/public/videos/:linkPublico` — ver seção própria); string opaca, formato
+não deve ser assumido pelo frontend (ver nota na seção de acesso público).
+`notaGeral` (1–5) só é
 preenchida quando o cliente aprova informando uma nota geral (ver
 [`POST /public/videos/:linkPublico/approve`](#post-public-videoslinkpublicoapprove)).
 
@@ -482,10 +484,16 @@ categoria.
 
 ## Acesso público do cliente (sem autenticação)
 
-Identificador é sempre `linkPublico` (UUID v4) do vídeo — nunca o `id`
-interno. Rotas sob `/public/videos/:linkPublico`. Nenhum dado interno da
-agência é exposto (sem `deadline`, sem `editorId`, sem canal interno de
-comentários).
+Identificador é sempre `linkPublico` do vídeo (ou do projeto, na galeria —
+ver `/public/projects/:linkPublico`) — nunca o `id` interno. Rotas sob
+`/public/videos/:linkPublico`. Nenhum dado interno da agência é exposto
+(sem `deadline`, sem `editorId`, sem canal interno de comentários).
+
+`linkPublico` é uma string opaca — o cliente (frontend) não deve assumir
+formato ou tamanho fixo. Projetos/vídeos criados antes de 2026-07 recebem um
+UUID v4 (36 caracteres); a partir dessa data, um id curto gerado
+aleatoriamente (10 caracteres, url-safe — ver `src/common/short-id.util.ts`).
+Ambos os formatos continuam resolvendo normalmente nas rotas públicas.
 
 ### `GET /public/videos/:linkPublico`
 Sem rate limit específico (usa o global de 60/min).
