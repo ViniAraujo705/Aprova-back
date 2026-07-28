@@ -1,15 +1,17 @@
-import { createWriteStream } from 'fs';
-import { readFile } from 'fs/promises';
+import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Upload } from '@aws-sdk/lib-storage';
 
 export interface PresignedUpload {
   uploadUrl: string;
@@ -122,21 +124,70 @@ export class StorageService {
   /**
    * Envia um arquivo local para o R2 sob a key informada e retorna a
    * URL publica. Usado para thumbnail e versao otimizada geradas no worker.
+   * Faz streaming direto do disco (multipart via lib-storage) em vez de
+   * carregar o arquivo inteiro em memoria, importante para os videos
+   * otimizados que podem chegar a centenas de MB.
    */
   async uploadFile(
     key: string,
     filePath: string,
     contentType: string,
   ): Promise<string> {
-    const body = await readFile(filePath);
-    const command = new PutObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-      Body: body,
-      ContentType: contentType,
+    const upload = new Upload({
+      client: this.client,
+      params: {
+        Bucket: this.bucket,
+        Key: key,
+        Body: createReadStream(filePath),
+        ContentType: contentType,
+        // Arquivos gerados pelo worker sao imutaveis (key unica por upload)
+        CacheControl: 'public, max-age=31536000, immutable',
+      },
+      queueSize: 4,
     });
-    await this.client.send(command);
+    await upload.done();
     return `${this.publicUrl}/${key}`;
+  }
+
+  /**
+   * Verifica se um objeto existe no R2 e retorna seu tamanho, sem baixar
+   * o conteudo. Usado para validar uploads diretos do cliente antes de
+   * enfileirar o processamento (o cliente pode reportar um urlStorage de
+   * um PUT que falhou silenciosamente).
+   */
+  async headObject(
+    key: string,
+  ): Promise<{ exists: boolean; sizeBytes: number | null }> {
+    try {
+      const result = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      return { exists: true, sizeBytes: result.ContentLength ?? null };
+    } catch (err) {
+      const typedErr = err as {
+        name?: string;
+        $metadata?: { httpStatusCode?: number };
+      };
+      const status = typedErr?.$metadata?.httpStatusCode;
+      if (
+        typedErr?.name === 'NotFound' ||
+        typedErr?.name === 'NoSuchKey' ||
+        status === 404
+      ) {
+        return { exists: false, sizeBytes: null };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Remove um objeto do R2 (usado para descartar uploads que excedem o
+   * tamanho maximo permitido).
+   */
+  async deleteObject(key: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
   }
 
   /**

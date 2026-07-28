@@ -24,7 +24,17 @@ import {
  * Em caso de falha, marca status_processamento = erro. O original em
  * url_storage permanece sempre disponível.
  */
-@Processor(VIDEO_PROCESSING_QUEUE)
+// Numero de videos processados (download + ffmpeg + upload) em paralelo
+// por instancia. ffmpeg roda como child process (nao bloqueia o event
+// loop), entao vale subir esse numero conforme CPU/IO disponivel; default
+// conservador de 2 para nao competir demais com o trafego HTTP no mesmo
+// container. Configuravel via VIDEO_PROCESSING_CONCURRENCY.
+const DEFAULT_CONCURRENCY = 2;
+
+@Processor(VIDEO_PROCESSING_QUEUE, {
+  concurrency:
+    Number(process.env.VIDEO_PROCESSING_CONCURRENCY) || DEFAULT_CONCURRENCY,
+})
 export class VideoProcessingProcessor extends WorkerHost {
   private readonly logger = new Logger(VideoProcessingProcessor.name);
 

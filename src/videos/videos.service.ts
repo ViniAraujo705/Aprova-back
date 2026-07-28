@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { UserRole, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { createWithUniqueLinkPublico } from '../common/short-id.util';
@@ -14,13 +15,23 @@ import { CreateVideoDto } from './dto/create-video.dto';
 import { NewVersionDto } from './dto/new-version.dto';
 import { UpdateDeadlineDto } from './dto/update-deadline.dto';
 
+const DEFAULT_MAX_VIDEO_SIZE_MB = 2048; // 2 GB
+
 @Injectable()
 export class VideosService {
+  private readonly maxVideoSizeBytes: number;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly processing: VideoProcessingService,
-  ) {}
+    config: ConfigService,
+  ) {
+    const maxMb =
+      Number(config.get<string>('VIDEO_MAX_SIZE_MB')) ||
+      DEFAULT_MAX_VIDEO_SIZE_MB;
+    this.maxVideoSizeBytes = maxMb * 1024 * 1024;
+  }
 
   createUploadUrl(dto: UploadUrlDto) {
     return this.storage.createPresignedUpload(dto.nomeArquivo, dto.contentType);
@@ -28,6 +39,7 @@ export class VideosService {
 
   async create(accountId: string, dto: CreateVideoDto) {
     await this.assertProjectOwnership(accountId, dto.projectId);
+    await this.validateUploadedFile(dto.urlStorage);
 
     // Se a versao nao for informada, calcula a proxima do projeto
     let versao = dto.versao;
@@ -68,6 +80,7 @@ export class VideosService {
    */
   async createNewVersion(accountId: string, paiId: string, dto: NewVersionDto) {
     const pai = await this.getOwnedVideo(accountId, paiId);
+    await this.validateUploadedFile(dto.urlStorage);
 
     const video = await createWithUniqueLinkPublico((linkPublico) =>
       this.prisma.video.create({
@@ -173,6 +186,35 @@ export class VideosService {
       throw new ForbiddenException('Video nao pertence a esta conta');
     }
     return video;
+  }
+
+  /**
+   * Confirma que o PUT direto ao R2 realmente aconteceu (o cliente pode
+   * reportar um urlStorage cujo upload falhou silenciosamente no browser)
+   * e garante que o arquivo nao excede o tamanho maximo permitido. Falha
+   * rapido aqui em vez de deixar o worker descobrir isso depois de gastar
+   * os retries do BullMQ.
+   */
+  private async validateUploadedFile(urlStorage: string): Promise<void> {
+    const key = this.storage.keyFromPublicUrl(urlStorage);
+    if (!key) {
+      throw new BadRequestException('urlStorage invalido');
+    }
+
+    const { exists, sizeBytes } = await this.storage.headObject(key);
+    if (!exists) {
+      throw new BadRequestException(
+        'Arquivo nao encontrado no storage. O upload pode ter falhado ou a URL expirado; tente novamente.',
+      );
+    }
+
+    if (sizeBytes !== null && sizeBytes > this.maxVideoSizeBytes) {
+      await this.storage.deleteObject(key).catch(() => undefined);
+      const maxMb = Math.floor(this.maxVideoSizeBytes / (1024 * 1024));
+      throw new BadRequestException(
+        `Arquivo excede o tamanho maximo permitido (${maxMb} MB).`,
+      );
+    }
   }
 
   private async assertProjectOwnership(accountId: string, projectId: string) {
