@@ -234,6 +234,20 @@ Body: `{ "editorId": "uuid" | null }`
 `editorId` precisa ser o `id` de um `owner` ou `editor` **da mesma conta**
 (`400` caso contrário); `null` remove a atribuição.
 
+### `DELETE /videos/:id`
+**Somente `owner`** (diferente do resto de `/videos`, que aceita
+`owner`+`editor` — mesmo padrão de `PATCH /videos/:id/deadline`).
+Exclui o vídeo; comentários e ratings são removidos em cascata
+(histórico não é recuperável) e os arquivos correspondentes
+(`urlStorage`, `urlOtimizada`, `thumbnailUrl`) são removidos do R2.
+
+Resposta: `{ "deleted": true }`
+
+Erros: `404` (vídeo não existe ou não pertence à conta do token — não
+vaza existência de vídeo de outra agência), `403` (usuário não é
+`owner`), `409` (o vídeo tem versões filhas apontando para ele via
+`videoPaiId`; remova/mova as versões antes de excluir o pai).
+
 **Shape do `Video`** (retornado por `POST`, `new-version` e `PATCH`):
 ```json
 {

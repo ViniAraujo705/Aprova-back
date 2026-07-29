@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -108,5 +109,18 @@ export class VideosController {
       id,
       dto.editorId,
     );
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.owner)
+  @ApiOperation({
+    summary:
+      'Owner exclui o video (comentarios e ratings sao removidos em cascata). Bloqueado com 409 se houver versoes filhas vinculadas.',
+  })
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.videosService.remove(user.accountId, id);
   }
 }

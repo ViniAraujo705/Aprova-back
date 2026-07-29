@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -169,6 +170,58 @@ export class VideosService {
       where: { id },
       data: { editorResponsavelId: editorId },
     });
+  }
+
+  /**
+   * Exclui o video (comentarios/ratings caem em cascata via schema) e os
+   * arquivos correspondentes no R2. Bloqueia com 409 se houver versoes
+   * filhas (videoPaiId) apontando para este video, para nao orfanar
+   * historico sem o owner decidir explicitamente. Diferente de
+   * getOwnedVideo, aqui um video de outra conta responde 404 (nao 403)
+   * para nao vazar a existencia do recurso para quem nao e dono dele.
+   */
+  async remove(accountId: string, id: string) {
+    const video = await this.prisma.video.findFirst({
+      where: { id, project: { accountId } },
+      select: {
+        id: true,
+        urlStorage: true,
+        urlOtimizada: true,
+        thumbnailUrl: true,
+        _count: { select: { versoes: true } },
+      },
+    });
+    if (!video) {
+      throw new NotFoundException('Video nao encontrado');
+    }
+    if (video._count.versoes > 0) {
+      throw new ConflictException(
+        'Video possui versoes vinculadas; remova ou mova as versoes antes de excluir',
+      );
+    }
+
+    await this.prisma.video.delete({ where: { id } });
+
+    await this.deleteStorageObjects([
+      video.urlStorage,
+      video.urlOtimizada,
+      video.thumbnailUrl,
+    ]);
+
+    return { deleted: true };
+  }
+
+  private async deleteStorageObjects(
+    urls: Array<string | null | undefined>,
+  ): Promise<void> {
+    const keys = urls
+      .filter((url): url is string => !!url)
+      .map((url) => this.storage.keyFromPublicUrl(url))
+      .filter((key): key is string => !!key);
+
+    await Promise.all(
+      keys.map((key) => this.storage.deleteObject(key).catch(() => undefined)),
+    );
   }
 
   /**
