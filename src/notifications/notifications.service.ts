@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { NotificationType, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
@@ -28,6 +28,8 @@ const NOTIFICATION_SELECT = {
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -35,40 +37,52 @@ export class NotificationsService {
    * video (se houver). Chamado internamente pelos fluxos publicos do
    * cliente (comentario, aprovacao, ajuste, avaliacao) - nunca exposto via
    * controller.
+   *
+   * Best-effort: e sempre chamado depois que a acao principal (comentario,
+   * rating, aprovacao) ja foi persistida. Uma falha aqui (ex: tabela de
+   * notificacoes fora do ar) nunca pode derrubar a resposta de uma acao
+   * que ja aconteceu - por isso engole e loga o erro em vez de propagar.
    */
   async notify(videoId: string, type: NotificationType): Promise<void> {
-    const video = await this.prisma.video.findUnique({
-      where: { id: videoId },
-      select: {
-        editorResponsavelId: true,
-        project: { select: { accountId: true } },
-      },
-    });
-    if (!video) {
-      return;
-    }
+    try {
+      const video = await this.prisma.video.findUnique({
+        where: { id: videoId },
+        select: {
+          editorResponsavelId: true,
+          project: { select: { accountId: true } },
+        },
+      });
+      if (!video) {
+        return;
+      }
 
-    const owners = await this.prisma.user.findMany({
-      where: { accountId: video.project.accountId, role: UserRole.owner },
-      select: { id: true },
-    });
+      const owners = await this.prisma.user.findMany({
+        where: { accountId: video.project.accountId, role: UserRole.owner },
+        select: { id: true },
+      });
 
-    const recipientIds = new Set(owners.map((o) => o.id));
-    if (video.editorResponsavelId) {
-      recipientIds.add(video.editorResponsavelId);
-    }
-    if (recipientIds.size === 0) {
-      return;
-    }
+      const recipientIds = new Set(owners.map((o) => o.id));
+      if (video.editorResponsavelId) {
+        recipientIds.add(video.editorResponsavelId);
+      }
+      if (recipientIds.size === 0) {
+        return;
+      }
 
-    await this.prisma.notification.createMany({
-      data: [...recipientIds].map((userId) => ({
-        accountId: video.project.accountId,
-        userId,
-        videoId,
-        type,
-      })),
-    });
+      await this.prisma.notification.createMany({
+        data: [...recipientIds].map((userId) => ({
+          accountId: video.project.accountId,
+          userId,
+          videoId,
+          type,
+        })),
+      });
+    } catch (err) {
+      this.logger.error(
+        `Falha ao criar notificacao (videoId=${videoId}, type=${type})`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 
   list(user: AuthUser, apenasNaoLidas?: boolean) {
