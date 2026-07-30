@@ -85,6 +85,8 @@ model User {
   nome        String
   email       String     @unique
   senha       String
+  // Foto de perfil do usuario (upload direto no R2, ver /users/me/photo-upload-url).
+  avatarUrl   String?    @map("avatar_url")
   role        UserRole   @default(owner)
   status      UserStatus @default(ativo)
   // White label da agencia: logo e cor de destaque (hex) exibidos na tela do cliente

@@ -16,6 +16,7 @@ enviar e o que esperar de volta. Gerado a partir do código-fonte em
 - [Perguntas de avaliação](#perguntas-de-avaliação-rating-questions)
 - [Desempenho da equipe](#desempenho-da-equipe-team)
 - [Conta / equipe (convites e membros)](#conta--equipe-account)
+- [Perfil](#perfil-usersme)
 - [Branding / white label](#branding--white-label-users)
 - [Dashboard](#dashboard)
 - [Relatório do projeto (PDF)](#relatório-do-projeto-pdf)
@@ -380,8 +381,9 @@ Resposta:
   editor tem `notaGeral` ainda.
 - `faixa`: `sem_dados` (`notaMedia === null`) · `vermelho` (`< 4`) ·
   `laranja` (`4 ≤ x < 6`) · `amarelo` (`6 ≤ x < 8`) · `verde` (`≥ 8`).
-- `avatarUrl`: sempre `null` hoje — não existe upload de avatar de usuário
-  no backend ainda (placeholder para uma feature futura).
+- `avatarUrl`: sempre `null` hoje — este endpoint específico não lê o
+  `fotoUrl` do usuário ainda (o upload em si já existe, ver seção
+  [Perfil](#perfil-usersme)); placeholder para conectar futuramente.
 
 ---
 
@@ -427,6 +429,40 @@ Resposta:
   suporta promoção (não dá pra rebaixar um `owner` de volta a `editor`
   por este endpoint). `400` se o membro já for `owner` ou se o editor
   estiver `suspenso`. `404` se o membro não existe/não pertence à conta.
+
+---
+
+## Perfil (`/users/me`)
+Autenticado — qualquer role (`owner`, `editor`, `admin`).
+
+| Método | Rota | Body | Retorno |
+|---|---|---|---|
+| `PATCH` | `/users/me` | `{ nome?, email?, fotoUrl? }` | `User` atualizado (shape de `/auth/login` + `fotoUrl`) |
+| `POST` | `/users/me/photo-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
+
+Todos os campos do `PATCH` são opcionais — atualiza só o que vier no body.
+Resposta:
+```json
+{ "id": "...", "nome": "...", "email": "...", "teamRole": "owner", "status": "ativo", "accountId": "...", "criadoEm": "...", "fotoUrl": "..." }
+```
+Erros: `409` se o novo `email` já pertence a outra conta · `400` validação
+(`nome` vazio, `email` inválido).
+
+> Troca de email **não exige reautenticação** nesta v1 — o JWT identifica o
+> usuário pelo `id` (não pelo `email`), então a sessão continua válida
+> normalmente depois da troca.
+
+`POST /users/me/photo-upload-url` gera uma presigned URL igual à do logo da
+agência (ver seção abaixo), só que na pasta `avatars` (avatar pessoal, não
+aparece pro cliente). `contentType` aceito: `image/png`, `image/jpeg`,
+`image/webp`, `image/svg+xml`. Fluxo completo: `POST
+/users/me/photo-upload-url` → `PUT` direto no R2 → `PATCH /users/me` com
+`{ fotoUrl: publicUrl }`.
+
+Troca de senha **não tem endpoint próprio** — reaproveita
+`POST /auth/forgot-password` + `POST /auth/reset-password` (o botão "Alterar
+senha" nas Configurações dispara o forgot-password pro próprio email do
+usuário logado).
 
 ---
 
