@@ -51,6 +51,21 @@ export class MediaService {
   }
 
   /**
+   * Extrai a duração do vídeo (em segundos, arredondada) via ffprobe.
+   */
+  getDuration(inputPath: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(inputPath, (err: Error | null, metadata) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(Math.round(metadata.format.duration ?? 0));
+      });
+    });
+  }
+
+  /**
    * Gera uma versão comprimida/otimizada para streaming web:
    * H.264 + AAC, limitada a 720p de altura, com moov atom no início
    * (+faststart) para começar a tocar antes do download completo.

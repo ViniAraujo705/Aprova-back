@@ -75,6 +75,7 @@ export class VideoProcessingProcessor extends WorkerHost {
     try {
       await this.storage.downloadToFile(sourceKey, inputPath);
 
+      const duracaoSegundos = await this.media.getDuration(inputPath);
       await this.media.generateThumbnail(inputPath, thumbPath);
       await this.media.optimizeForWeb(inputPath, optimizedPath);
 
@@ -97,6 +98,7 @@ export class VideoProcessingProcessor extends WorkerHost {
         data: {
           thumbnailUrl,
           urlOtimizada,
+          duracaoSegundos,
           statusProcessamento: ProcessamentoStatus.pronto,
         },
       });

@@ -214,6 +214,9 @@ model Video {
   thumbnailUrl        String?             @map("thumbnail_url")
   // Versao comprimida para streaming web (gerada em background); original permanece em url_storage
   urlOtimizada        String?             @map("url_otimizada")
+  // Duracao do video em segundos, extraida via ffprobe no pipeline de
+  // processamento (nao vem do client); null ate o processamento terminar
+  duracaoSegundos     Int?                @map("duracao_segundos")
   // Estado do pipeline de processamento (thumbnail + otimizacao)
   statusProcessamento ProcessamentoStatus @default(processando) @map("status_processamento")
   // Quando o cliente aprovou (para metricas de tempo de aprovacao)
