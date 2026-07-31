@@ -14,6 +14,7 @@ import { MailService } from '../mail/mail.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { toMemberDto } from '../common/dto/team-role.util';
+import { SessionMeta, SessionsService } from '../sessions/sessions.service';
 
 @Injectable()
 export class AccountService {
@@ -25,6 +26,7 @@ export class AccountService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly mail: MailService,
+    private readonly sessions: SessionsService,
   ) {}
 
   /**
@@ -86,7 +88,7 @@ export class AccountService {
    * Aceite publico do convite: cria o usuario editor vinculado a conta do
    * convite e marca o convite como aceito. Endpoint sem autenticacao.
    */
-  async acceptInvite(token: string, dto: AcceptInviteDto) {
+  async acceptInvite(token: string, dto: AcceptInviteDto, meta: SessionMeta) {
     const invite = await this.prisma.invite.findUnique({
       where: { token },
     });
@@ -131,6 +133,8 @@ export class AccountService {
       }),
     ]);
 
+    const session = await this.sessions.createSession(user.id, meta);
+
     return {
       user: toMemberDto(user),
       access_token: this.jwt.sign({
@@ -138,6 +142,7 @@ export class AccountService {
         email: user.email,
         role: user.role,
         accountId: user.accountId,
+        sid: session.id,
       }),
     };
   }
@@ -283,6 +288,46 @@ export class AccountService {
       select: { id: true, nome: true, email: true, role: true, status: true },
     });
     return toMemberDto(updated);
+  }
+
+  /** Owner lista as sessoes ativas (dispositivos logados) de um membro. */
+  async listMemberSessions(accountId: string, memberId: string) {
+    await this.assertMember(accountId, memberId);
+    // "atual" nunca se aplica aqui: e sempre a sessao de outra pessoa.
+    return this.sessions.listForUser(memberId, null);
+  }
+
+  /** Owner encerra remotamente uma sessao especifica de um membro. */
+  async deleteMemberSession(
+    accountId: string,
+    memberId: string,
+    sessionId: string,
+  ) {
+    await this.assertMember(accountId, memberId);
+    return this.sessions.deleteById(memberId, sessionId);
+  }
+
+  /** Owner encerra todas as sessoes de um membro (sem excecao). */
+  async deleteAllMemberSessions(accountId: string, memberId: string) {
+    await this.assertMember(accountId, memberId);
+    return this.sessions.deleteAllOfUser(memberId);
+  }
+
+  /**
+   * Confere que memberId pertence a mesma conta/agencia do owner
+   * autenticado - nunca deixa vazar/mexer em membro de outra agencia.
+   */
+  private async assertMember(
+    accountId: string,
+    memberId: string,
+  ): Promise<void> {
+    const member = await this.prisma.user.findFirst({
+      where: { id: memberId, accountId },
+      select: { id: true },
+    });
+    if (!member) {
+      throw new NotFoundException('Membro nao encontrado nesta conta');
+    }
   }
 
   private buildInviteUrl(token: string): string {

@@ -8,6 +8,7 @@ export interface AuthUser {
   role: UserRole;
   status: UserStatus;
   accountId: string;
+  sessionId: string;
 }
 
 /**

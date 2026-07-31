@@ -84,8 +84,12 @@ model User {
   accountId   String     @map("account_id")
   nome        String
   email       String     @unique
-  senha       String
-  // Foto de perfil do usuario (upload direto no R2, ver /users/me/photo-upload-url).
+  // Opcional: contas criadas via login social (Google/Apple) nao tem senha local.
+  senha       String?
+  // Identificadores de login social. Uma conta pode ter senha local e/ou
+  // um ou ambos vinculados (login por qualquer um deles cai no mesmo User).
+  googleId    String?    @unique @map("google_id")
+  appleId     String?    @unique @map("apple_id")
   avatarUrl   String?    @map("avatar_url")
   role        UserRole   @default(owner)
   status      UserStatus @default(ativo)
@@ -100,9 +104,31 @@ model User {
   videosResponsavel   Video[]
   passwordResetTokens PasswordResetToken[]
   notifications       Notification[]
+  sessions            Session[]
 
   @@index([accountId])
   @@map("users")
+}
+
+// Uma linha por login bem-sucedido (email/senha, Google, Apple ou aceite de
+// convite). O JWT emitido carrega o id dessa sessao como claim `sid`; o
+// guard confere a cada request que ela ainda existe (revogar = apagar a
+// linha). Alimenta a tela de "sessoes ativas" (listar dispositivos logados
+// e permitir encerrar remotamente).
+model Session {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  // String crua do header User-Agent; o "Chrome - macOS" amigavel e
+  // derivado na hora de montar a resposta (nunca armazenado processado).
+  userAgent      String?  @map("user_agent")
+  ip             String?
+  criadoEm       DateTime @default(now()) @map("criado_em")
+  ultimoAcessoEm DateTime @default(now()) @map("ultimo_acesso_em")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
 }
 
 // Token de uso unico para o fluxo de "esqueci minha senha". Expira em 1h

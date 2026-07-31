@@ -31,8 +31,8 @@ enviar e o que esperar de volta. Gerado a partir do código-fonte em
 `http://localhost:3000/api`.
 
 **Autenticação**: JWT via header `Authorization: Bearer <access_token>`.
-O token é obtido em `/auth/login`, `/auth/register` ou
-`/account/invite/:token/accept`. Expira por padrão em `7d`
+O token é obtido em `/auth/login`, `/auth/register`, `/auth/google`,
+`/auth/apple` ou `/account/invite/:token/accept`. Expira por padrão em `7d`
 (`JWT_EXPIRES_IN`). Quando expira ou é inválido, qualquer rota autenticada
 responde `401`. Se a conta estiver com `status = suspenso`, responde `403`
 mesmo com token válido.
@@ -116,6 +116,57 @@ Erros: `401` credenciais inválidas · `403` conta suspensa.
 > Nota: `user.teamRole` é o campo que o frontend deve usar para decidir a UI
 > por papel (`owner`/`editor`/`admin`) — o Prisma chama esse campo de `role`
 > internamente, mas a API sempre expõe como `teamRole`.
+
+### `POST /auth/google`
+Sem autenticação. Rate limit: **10/min**.
+
+Login **ou** cadastro via Google — endpoint único para os dois casos. O
+frontend/app faz o sign-in nativo com o Google Sign-In SDK (não é o backend
+que redireciona para o Google) e manda pra cá o **ID token** retornado pelo
+SDK (não confundir com `access_token`).
+
+Body:
+```json
+{ "idToken": "eyJhbGciOi...", "nomeAgencia": "Agência Maria" }
+```
+- `idToken` obrigatório.
+- `nomeAgencia` opcional, usado **só** se for a primeira vez desse usuário
+  (cria a conta) — se omitido, usa o nome do perfil Google.
+
+Resposta `200`: mesmo shape de `register`/`login` (`{ user, access_token }`).
+
+Comportamento:
+- Se já existe uma conta com o `sub` do Google vinculado, loga direto.
+- Senão, se já existe uma conta local (ou Apple) com o mesmo e-mail
+  **verificado** pelo Google, vincula o Google a essa conta (login local
+  continua funcionando normalmente depois).
+- Senão, cria a agência + usuário `owner` (igual ao `/auth/register`).
+
+Erros: `401` token inválido ou e-mail não verificado no Google · `403`
+conta suspensa, ou `GOOGLE_CLIENT_ID` não configurado no backend.
+
+### `POST /auth/apple`
+Sem autenticação. Rate limit: **10/min**.
+
+Login **ou** cadastro via Apple — mesmo conceito do `/auth/google`. O
+app faz o Sign in with Apple e manda pra cá o `identityToken` retornado.
+
+Body:
+```json
+{ "identityToken": "eyJhbGciOi...", "nome": "Maria Silva", "nomeAgencia": "Agência Maria" }
+```
+- `identityToken` obrigatório.
+- `nome` **opcional, mas importante**: a Apple só entrega o nome do
+  usuário pro client (`ASAuthorizationAppleIDCredential.fullName`) na
+  **primeira** autorização — nunca dentro do token. O frontend precisa
+  guardar esse nome nesse primeiro momento e reenviar aqui; se omitido,
+  o backend usa a parte local do e-mail como nome.
+- `nomeAgencia` opcional, mesmo comportamento do `/auth/google`.
+
+Resposta `200`: mesmo shape de `register`/`login`.
+
+Erros: `401` token inválido ou e-mail não verificado pela Apple · `403`
+conta suspensa, ou `APPLE_CLIENT_ID` não configurado no backend.
 
 ### `POST /auth/forgot-password`
 Sem autenticação. Rate limit: **3/min**.
@@ -429,6 +480,56 @@ Resposta:
   suporta promoção (não dá pra rebaixar um `owner` de volta a `editor`
   por este endpoint). `400` se o membro já for `owner` ou se o editor
   estiver `suspenso`. `404` se o membro não existe/não pertence à conta.
+
+### Sessões ativas (`/account/sessions`, `/account/members/:id/sessions`)
+
+Toda autenticação bem-sucedida (`/auth/login`, `/auth/register`,
+`/auth/google`, `/auth/apple`, aceite de convite) cria uma linha em
+`Session` e o JWT emitido carrega o id dela na claim `sid`. O guard
+confere a cada request que a sessão ainda existe — apagá-la (via os
+endpoints abaixo) invalida o token imediatamente, mesmo antes de expirar
+(7 dias).
+
+| Método | Rota | Auth | Retorno |
+|---|---|---|---|
+| `GET` | `/account/sessions` | qualquer role | `Session[]` |
+| `DELETE` | `/account/sessions/:id` | qualquer role | `204 No Content` |
+| `DELETE` | `/account/sessions` | qualquer role | `204 No Content` |
+| `GET` | `/account/members/:id/sessions` | `owner` | `Session[]` |
+| `DELETE` | `/account/members/:id/sessions/:sessionId` | `owner` | `204 No Content` |
+| `DELETE` | `/account/members/:id/sessions` | `owner` | `204 No Content` |
+
+`Session`:
+```json
+{
+  "id": "uuid",
+  "dispositivo": "Chrome · macOS",
+  "tipoDispositivo": "desktop",
+  "localizacao": null,
+  "ip": "187.54.12.201",
+  "criadoEm": "2026-07-20T10:00:00.000Z",
+  "ultimoAcessoEm": "2026-07-30T09:15:00.000Z",
+  "atual": true
+}
+```
+`dispositivo`/`tipoDispositivo` são derivados do User-Agent na hora da
+resposta (`ua-parser-js`), não armazenados prontos. `localizacao` é
+sempre `null` hoje (sem integração de geolocalização por IP). `atual` só
+é calculado nas rotas da própria conta (`true` se `id` bate com a sessão
+do token usado na request); nas rotas de `/account/members/:id/sessions`
+é sempre `false` (nunca é a sessão de quem está chamando).
+
+- `GET /account/sessions` / `DELETE /account/sessions/:id`: listam ou
+  apagam uma sessão do próprio usuário autenticado. `404` se `:id` não
+  existir ou não pertencer a ele — funciona mesmo se `:id` for a sessão
+  atual (não é bloqueado no backend).
+- `DELETE /account/sessions`: apaga todas as sessões do usuário, exceto a
+  que fez esta própria requisição.
+- `GET /account/members/:id/sessions` e as duas rotas `DELETE`
+  correspondentes: só `owner`, agindo sobre as sessões do membro `:id`.
+  `404` se `:id` não for membro da mesma conta/agência do owner
+  autenticado. `DELETE .../sessions` (sem `:sessionId`) apaga todas as
+  sessões daquele membro, sem exceção.
 
 ---
 

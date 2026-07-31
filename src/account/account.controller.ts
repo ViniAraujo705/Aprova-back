@@ -9,11 +9,13 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '@prisma/client';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -26,11 +28,16 @@ import { CreateInviteDto } from './dto/create-invite.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { UpdateMemberStatusDto } from './dto/update-member-status.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
+import { SessionsService } from '../sessions/sessions.service';
+import { sessionMetaFrom } from '../sessions/session-meta.util';
 
 @ApiTags('account')
 @Controller('account')
 export class AccountController {
-  constructor(private readonly accountService: AccountService) {}
+  constructor(
+    private readonly accountService: AccountService,
+    private readonly sessionsService: SessionsService,
+  ) {}
 
   @Post('invite')
   @ApiBearerAuth()
@@ -53,8 +60,9 @@ export class AccountController {
   acceptInvite(
     @Param('token', new ParseUUIDPipe({ version: '4' })) token: string,
     @Body() dto: AcceptInviteDto,
+    @Req() req: Request,
   ) {
-    return this.accountService.acceptInvite(token, dto);
+    return this.accountService.acceptInvite(token, dto, sessionMetaFrom(req));
   }
 
   @Delete('invite/:id')
@@ -126,5 +134,92 @@ export class AccountController {
     @Body() _dto: UpdateMemberRoleDto,
   ) {
     return this.accountService.promoteMemberToOwner(user.accountId, id);
+  }
+
+  @Get('sessions')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary:
+      'Lista as sessoes ativas (dispositivos logados) do proprio usuario.',
+  })
+  listMySessions(@CurrentUser() user: AuthUser) {
+    return this.sessionsService.listForUser(user.id, user.sessionId);
+  }
+
+  @Delete('sessions/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary:
+      'Encerra remotamente uma sessao propria (desloga aquele dispositivo).',
+  })
+  deleteMySession(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.sessionsService.deleteById(user.id, id);
+  }
+
+  @Delete('sessions')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary:
+      'Encerra todas as sessoes proprias, exceto a que fez esta requisicao.',
+  })
+  deleteOtherSessions(@CurrentUser() user: AuthUser) {
+    return this.sessionsService.deleteAllExceptCurrent(user.id, user.sessionId);
+  }
+
+  @Get('members/:id/sessions')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner)
+  @ApiOperation({
+    summary: 'Owner lista as sessoes ativas de um membro da propria conta.',
+  })
+  listMemberSessions(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.accountService.listMemberSessions(user.accountId, id);
+  }
+
+  @Delete('members/:id/sessions/:sessionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner)
+  @ApiOperation({
+    summary: 'Owner encerra remotamente uma sessao especifica de um membro.',
+  })
+  deleteMemberSession(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('sessionId', new ParseUUIDPipe({ version: '4' })) sessionId: string,
+  ) {
+    return this.accountService.deleteMemberSession(
+      user.accountId,
+      id,
+      sessionId,
+    );
+  }
+
+  @Delete('members/:id/sessions')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner)
+  @ApiOperation({
+    summary: 'Owner encerra todas as sessoes de um membro (sem excecao).',
+  })
+  deleteAllMemberSessions(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.accountService.deleteAllMemberSessions(user.accountId, id);
   }
 }

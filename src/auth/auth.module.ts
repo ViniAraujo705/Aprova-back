@@ -6,10 +6,12 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { OnboardingService } from './onboarding.service';
+import { SessionsModule } from '../sessions/sessions.module';
 
 @Module({
   imports: [
     PassportModule,
+    SessionsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
