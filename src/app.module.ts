@@ -26,10 +26,15 @@ import { NotificationsModule } from './notifications/notifications.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     // Rate limiting global (protege login e rotas publicas contra abuso).
+    // Limite elevado de 60 -> 120/min: navegacao normal do dashboard
+    // (varios GETs autenticados em sequencia: videos, projetos, comentarios,
+    // ratings) estava esbarrando no limite anterior sem nenhum abuso.
+    // Rotas sensiveis (login, reset de senha etc.) tem limites proprios e
+    // mais restritivos via @Throttle nos respectivos controllers.
     ThrottlerModule.forRoot([
       {
         ttl: 60_000,
-        limit: 60,
+        limit: 120,
       },
     ]),
     // Fila assíncrona (BullMQ + Redis) usada no processamento de vídeo.

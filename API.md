@@ -1,8 +1,8 @@
 # API do Vistoow — Guia para o Frontend
 
 Referência completa de todos os endpoints do backend: como autenticar, o que
-enviar e o que esperar de volta. Gerado a partir do código-fonte em
-2026-07-06 — se algo aqui divergir do comportamento real, o código
+enviar e o que esperar de volta. Revisado a partir do código-fonte em
+2026-07-30 — se algo aqui divergir do comportamento real, o código
 (`src/**/*.controller.ts`, `src/**/dto/*.dto.ts`) é a fonte da verdade.
 
 ## Sumário
@@ -15,9 +15,10 @@ enviar e o que esperar de volta. Gerado a partir do código-fonte em
 - [Comentários (canais autenticados)](#comentários-canais-autenticados)
 - [Perguntas de avaliação](#perguntas-de-avaliação-rating-questions)
 - [Desempenho da equipe](#desempenho-da-equipe-team)
-- [Conta / equipe (convites e membros)](#conta--equipe-account)
+- [Conta / equipe (convites, membros e sessões)](#conta--equipe-account)
 - [Perfil](#perfil-usersme)
 - [Branding / white label](#branding--white-label-users)
+- [Notificações](#notificações-notifications)
 - [Dashboard](#dashboard)
 - [Relatório do projeto (PDF)](#relatório-do-projeto-pdf)
 - [Acesso público do cliente (sem autenticação)](#acesso-público-do-cliente-sem-autenticação)
@@ -196,15 +197,30 @@ Autenticado — roles `owner`, `editor`.
 
 | Método | Rota | Body | Retorno |
 |---|---|---|---|
-| `POST` | `/clients` | `{ nome, email }` | `Client` criado |
+| `POST` | `/clients` | `{ nome, email?, descricao?, fotoUrl? }` | `Client` criado |
 | `GET` | `/clients` | — | `Client[]` (ordenado por `nome`) |
 | `GET` | `/clients/:id` | — | `Client` |
-| `PATCH` | `/clients/:id` | `{ nome?, email? }` | `Client` atualizado |
+| `PATCH` | `/clients/:id` | `{ nome?, email?, descricao?, fotoUrl? }` | `Client` atualizado |
 | `DELETE` | `/clients/:id` | — | `{ "deleted": true }` |
+| `POST` | `/clients/:id/photo-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
 
-`Client`: `{ id, nome, email, accountId, isExemplo }`. Deletar um cliente
-apaga em cascata seus projetos e vídeos (histórico não é recuperável).
-Erros: `404` se o cliente não existe ou não pertence à conta.
+`Client`: `{ id, nome, email, descricao, fotoUrl, accountId, isExemplo }`.
+`email` é opcional. `descricao` e `fotoUrl` alimentam o modo "Preview Reels"
+da galeria pública (ver [`GET /public/videos/:linkPublico`](#get-publicvideoslinkpublico)
+— campo `cliente`). Deletar um cliente apaga em cascata seus projetos e
+vídeos (histórico não é recuperável). Erros: `404` se o cliente não existe
+ou não pertence à conta.
+
+`POST /clients/:id/photo-upload-url` gera uma presigned URL pro upload da
+foto do cliente (mesmo mecanismo de presigned URL do resto da API — `PUT`
+direto no R2, pasta `clients`). `contentType` aceito: `image/png`,
+`image/jpeg`, `image/webp`, `image/svg+xml`. Fluxo: gera a URL → `PUT`
+direto no R2 → `PATCH /clients/:id` com `{ fotoUrl: publicUrl }`.
+
+> ⚠️ O `:id` na rota não é usado pelo backend (só gera a presigned URL, sem
+> tocar no banco) — a validação de que o cliente pertence à conta do token
+> acontece só depois, no `PATCH /clients/:id` que efetivamente grava o
+> `fotoUrl`. Não depender do `:id` aqui pra nenhum tipo de autorização.
 
 ---
 
@@ -262,6 +278,8 @@ Body: `{ "urlStorage": "...", "nomeArquivo": "..." }`
 
 ### `GET /videos?project_id=<uuid>`
 Lista os vídeos de um projeto (mais recente primeiro por versão).
+Sem `project_id`, lista os vídeos de **todos os projetos da conta**
+autenticada (evita fan-out de uma request por projeto no dashboard).
 
 Resposta: array de `Video` + `videoPai: { id, versao, nomeArquivo } | null`
 + `_count: { comments, ratings, versoes }`.
@@ -341,11 +359,25 @@ e **cliente** (resposta do owner ao comentário público do cliente).
 | `GET` | `/videos/:id/comments/internal` | `owner`, `editor` | — | Lista o canal interno |
 | `POST` | `/videos/:id/comments/internal` | `owner`, `editor` | `{ timestampVideo, texto, parentId? }` | Cria comentário interno (autor = usuário do token) |
 | `POST` | `/videos/:id/comments/client-reply` | `owner` apenas | `{ timestampVideo, texto, parentId? }` | Resposta do owner ao cliente, no canal cliente |
+| `DELETE` | `/videos/:id/comments/:commentId` | `owner`, `editor` | — | Exclui um comentário do canal **cliente** (moderação) |
+| `POST` | `/videos/:id/comments/:commentId/move` | `owner`, `editor` | `{ videoDestinoId }` | Move um comentário do canal cliente para o canal interno de outro vídeo |
 
 - `timestampVideo`: segundos (inteiro ≥ 0).
 - `texto`: string não vazia, até 2000 caracteres.
 - `parentId`: UUID opcional — precisa ser um comentário existente, **do
   mesmo vídeo e do mesmo canal** (senão `400`).
+- `DELETE /videos/:id/comments/:commentId`: só apaga comentários do canal
+  **cliente** (usado pra moderar o que o cliente escreveu) — `400` se o
+  comentário for do canal interno. `404` se `:commentId` não existir ou não
+  pertencer ao vídeo `:id`. `204 No Content` na resposta.
+- `POST /videos/:id/comments/:commentId/move`: pega um comentário do canal
+  cliente e recria no canal **interno** de `videoDestinoId` (mantendo
+  `autorType: cliente`, pra preservar o badge "Cliente" na thread interna),
+  apagando o original. `:commentId` precisa ser do canal cliente e
+  pertencer ao vídeo `:id` (`404` se não existir/não for desse vídeo, `400`
+  se não for do canal cliente). `videoDestinoId` precisa existir (`404`) e
+  pertencer à mesma conta do token (`403` se for de outra agência). Retorna
+  o comentário recriado (mesmo shape abaixo, já no canal `interno`).
 
 Shape do comentário retornado:
 ```json
@@ -592,6 +624,54 @@ Esse branding (`logoUrl`/`corDestaque`/`nomeAgencia`) é o que aparece para o
 
 ---
 
+## Notificações (`/notifications`)
+Autenticado — roles `owner`, `editor`. Escopado a `userId` + `accountId` do
+token (nunca cruza contas ou usuários).
+
+| Método | Rota | Query | Retorno |
+|---|---|---|---|
+| `GET` | `/notifications` | `?naoLidas=true` (opcional) | `Notification[]` (mais recentes primeiro, máx. 50) |
+| `GET` | `/notifications/unread-count` | — | número (contagem de não lidas) |
+| `PATCH` | `/notifications/:id/read` | — | `200`, corpo vazio |
+| `PATCH` | `/notifications/read-all` | — | `200`, corpo vazio |
+
+`Notification`:
+```json
+{
+  "id": "uuid",
+  "type": "comentario_cliente" | "aprovacao_cliente" | "ajuste_solicitado" | "avaliacao_cliente",
+  "lida": false,
+  "criadoEm": "...",
+  "video": {
+    "id": "uuid",
+    "nomeArquivo": "video.mp4",
+    "thumbnailUrl": "https://... ou null",
+    "linkPublico": "aB3xQ9kZ2m",
+    "project": { "nome": "Campanha Verão", "client": { "nome": "Cliente A" } }
+  }
+}
+```
+
+- São criadas automaticamente (nunca via endpoint próprio) quando o
+  **cliente** comenta, aprova, pede ajuste ou avalia um vídeo — ver as
+  rotas [públicas](#acesso-público-do-cliente-sem-autenticação). Destinatários:
+  todos os `owner` da conta + o `editorResponsavel` do vídeo (se houver).
+- `GET /notifications?naoLidas=true`: filtra só as não lidas. Sem o
+  parâmetro (ou `naoLidas=false`), lista as 50 mais recentes independente
+  do status de leitura.
+- `PATCH /notifications/:id/read`: marca uma notificação como lida.
+  Idempotente — não dá erro se já estava lida ou se `:id` não existir/não
+  for do usuário (nesses casos simplesmente não atualiza nada, mas ainda
+  responde `200`).
+- `PATCH /notifications/read-all`: marca todas as não lidas do usuário
+  como lidas.
+- Criação é **best-effort**: se falhar (ex.: tabela indisponível), a ação
+  do cliente que a disparou (comentário/aprovação/rating/ajuste) continua
+  respondendo normalmente — a notificação simplesmente não é criada, sem
+  quebrar o fluxo público.
+
+---
+
 ## Dashboard
 Autenticado — roles `owner`, `editor`. Escopado à conta do token.
 
@@ -646,6 +726,35 @@ UUID v4 (36 caracteres); a partir dessa data, um id curto gerado
 aleatoriamente (10 caracteres, url-safe — ver `src/common/short-id.util.ts`).
 Ambos os formatos continuam resolvendo normalmente nas rotas públicas.
 
+### `GET /public/projects/:linkPublico`
+Sem rate limit específico (usa o global de 60/min). Entrada única da
+galeria pública: lista todos os vídeos do projeto a partir de um só link,
+pra o cliente não precisar entrar vídeo por vídeo.
+
+Resposta:
+```json
+{
+  "projeto": { "nome": "Campanha Verão" },
+  "cliente": { "nome": "Cliente A" },
+  "agencia": { "nome": "Agência Maria", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
+  "videos": [
+    {
+      "link": "abc123-...",
+      "title": "video.mp4",
+      "posterUrl": "https://... ou null",
+      "status": "pendente" | "aprovado" | "ajuste" | "erro",
+      "statusProcessamento": "processando" | "pronto" | "erro",
+      "versao": 1
+    }
+  ]
+}
+```
+`videos` vem ordenado por `criadoEm` crescente. Cada `link` é o
+`linkPublico` do vídeo — o front navega pra
+`GET /public/videos/:linkPublico` a partir dele (ver seção abaixo) pra
+abrir o player/comentários/rating daquele vídeo específico. `404` se
+`:linkPublico` não corresponder a nenhum projeto.
+
 ### `GET /public/videos/:linkPublico`
 Sem rate limit específico (usa o global de 60/min).
 
@@ -663,7 +772,7 @@ Resposta:
   "notaGeral": null,
   "criadoEm": "...",
   "projeto": { "nome": "Campanha Verão" },
-  "cliente": { "nome": "Cliente A" },
+  "cliente": { "nome": "Cliente A", "descricao": "... ou null", "fotoUrl": "https://... ou null" },
   "agencia": { "nome": "Agência Maria", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
   "comments": [
     { "id": "...", "timestampVideo": 12, "texto": "...", "autorType": "cliente", "autorNome": "Fulano", "autorUser": null, "parentId": null, "criadoEm": "...", "isAgencyReply": false }
@@ -694,14 +803,17 @@ Resposta:
   que por isso não aparece mais em `ratingQuestions`).
 - `notaGeral`: nota geral (1–5) dada pelo cliente ao aprovar (ver abaixo);
   `null` se ainda não aprovado ou se aprovou sem informar nota.
-- `queue`: usado pela navegação estilo "Reels" (swipe entre vídeos do
-  mesmo cliente). Contém **todos** os vídeos do cliente dono deste vídeo,
+- `queue`: usado pela navegação estilo "Reels" (swipe entre vídeos).
+  Contém **todos** os vídeos do **mesmo projeto** deste vídeo (não do
+  cliente inteiro — escopo deliberadamente restrito ao projeto, pra não
+  misturar entregas antigas de outros projetos do mesmo cliente),
   **incluindo o vídeo atual**, ordenados por data de criação (crescente,
   estável entre chamadas). O frontend localiza a posição atual com
   `queue.findIndex(item => item.link === linkPublicoAtual)` para navegar
   prev/next — sempre vai existir um match porque o vídeo atual está na
   lista. Cada item tem só `link`, `title`, `posterUrl`, `status` (nada de
-  dados internos da agência).
+  dados internos da agência) — equivalente ao item de `videos` da galeria
+  do projeto, mas sem `statusProcessamento`/`versao`.
 
 ### `POST /public/videos/:linkPublico/comments`
 Rate limit: **20/min**.

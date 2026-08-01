@@ -101,10 +101,16 @@ export class VideosService {
     return video;
   }
 
-  async findByProject(accountId: string, projectId: string) {
-    await this.assertProjectOwnership(accountId, projectId);
+  /**
+   * Sem project_id, lista os videos de todos os projetos da conta (usado
+   * pelo dashboard para evitar fan-out de uma request por projeto).
+   */
+  async findByProject(accountId: string, projectId?: string) {
+    if (projectId) {
+      await this.assertProjectOwnership(accountId, projectId);
+    }
     return this.prisma.video.findMany({
-      where: { projectId },
+      where: projectId ? { projectId } : { project: { accountId } },
       orderBy: { versao: 'desc' },
       include: {
         videoPai: {

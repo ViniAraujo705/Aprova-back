@@ -62,10 +62,14 @@ export class VideosController {
   }
 
   @Get()
+  @ApiOperation({
+    summary:
+      'Lista videos. Com project_id, filtra por projeto; sem project_id, retorna os videos de todos os projetos da conta.',
+  })
   findByProject(
     @CurrentUser() user: AuthUser,
-    @Query('project_id', new ParseUUIDPipe({ version: '4' }))
-    projectId: string,
+    @Query('project_id', new ParseUUIDPipe({ version: '4', optional: true }))
+    projectId?: string,
   ) {
     return this.videosService.findByProject(user.accountId, projectId);
   }
