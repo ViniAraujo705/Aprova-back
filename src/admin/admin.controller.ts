@@ -13,7 +13,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AdminService } from './admin.service';
+import { PlansService } from '../plans/plans.service';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { UpdateAccountPlanDto } from './dto/update-account-plan.dto';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -21,7 +23,10 @@ import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.admin)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly plansService: PlansService,
+  ) {}
 
   @Get('users')
   listUsers() {
@@ -39,6 +44,18 @@ export class AdminController {
   @Get('metrics')
   getMetrics() {
     return this.adminService.getMetrics();
+  }
+
+  /**
+   * Troca o plano de uma conta manualmente. Sem gateway de pagamento
+   * integrado ainda: e o unico jeito de mudar de plano hoje.
+   */
+  @Patch('accounts/:id/plan')
+  setAccountPlan(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateAccountPlanDto,
+  ) {
+    return this.plansService.setPlan(id, dto.plan);
   }
 
   @Get('videos/errors')

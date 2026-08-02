@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import {
   PROCESS_VIDEO_JOB,
   ProcessVideoJobData,
+  VIDEO_PROCESSING_PRIORITY_DEFAULT,
   VIDEO_PROCESSING_QUEUE,
 } from './video-processing.constants';
 
@@ -23,7 +24,10 @@ export class VideoProcessingService {
     private readonly queue: Queue<ProcessVideoJobData>,
   ) {}
 
-  async enqueue(videoId: string): Promise<void> {
+  async enqueue(
+    videoId: string,
+    priority: number = VIDEO_PROCESSING_PRIORITY_DEFAULT,
+  ): Promise<void> {
     try {
       await this.queue.add(
         PROCESS_VIDEO_JOB,
@@ -33,6 +37,7 @@ export class VideoProcessingService {
           backoff: { type: 'exponential', delay: 5000 },
           removeOnComplete: true,
           removeOnFail: 100,
+          priority,
         },
       );
     } catch (err) {

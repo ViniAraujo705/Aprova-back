@@ -21,6 +21,7 @@ import { HealthModule } from './health/health.module';
 import { RatingQuestionsModule } from './rating-questions/rating-questions.module';
 import { TeamModule } from './team/team.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PlansModule } from './plans/plans.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     RatingQuestionsModule,
     TeamModule,
     NotificationsModule,
+    PlansModule,
   ],
   providers: [
     {

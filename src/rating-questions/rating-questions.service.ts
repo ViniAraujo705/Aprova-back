@@ -4,12 +4,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PlansService } from '../plans/plans.service';
 import { CreateRatingQuestionDto } from './dto/create-rating-question.dto';
 import { UpdateRatingQuestionDto } from './dto/update-rating-question.dto';
 
 @Injectable()
 export class RatingQuestionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly plans: PlansService,
+  ) {}
 
   findAll(accountId: string) {
     return this.prisma.ratingQuestion.findMany({
@@ -19,6 +23,7 @@ export class RatingQuestionsService {
   }
 
   async create(accountId: string, dto: CreateRatingQuestionDto) {
+    await this.plans.assertCanAddRatingQuestion(accountId);
     // Nova pergunta entra no fim da lista (maior ordem + 1).
     const last = await this.prisma.ratingQuestion.findFirst({
       where: { accountId },

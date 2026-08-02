@@ -27,6 +27,7 @@ import {
 } from '../auth/decorators/current-user.decorator';
 import { ProjectsService } from './projects.service';
 import { ProjectReportService } from '../reports/project-report.service';
+import { PlansService } from '../plans/plans.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 
@@ -39,6 +40,7 @@ export class ProjectsController {
   constructor(
     private readonly projectsService: ProjectsService,
     private readonly projectReportService: ProjectReportService,
+    private readonly plansService: PlansService,
   ) {}
 
   @Post()
@@ -67,6 +69,7 @@ export class ProjectsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Res() res: Response,
   ) {
+    await this.plansService.assertFeature(user.accountId, 'pdfReports');
     const { buffer, filename } = await this.projectReportService.generate(
       user.accountId,
       id,

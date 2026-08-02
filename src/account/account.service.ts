@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   Injectable,
   Logger,
   NotFoundException,
@@ -15,10 +16,12 @@ import { CreateInviteDto } from './dto/create-invite.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { toMemberDto } from '../common/dto/team-role.util';
 import { SessionMeta, SessionsService } from '../sessions/sessions.service';
+import { PlansService } from '../plans/plans.service';
 
 @Injectable()
 export class AccountService {
   private readonly SALT_ROUNDS = 10;
+  private readonly INVITE_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 dias
   private readonly logger = new Logger(AccountService.name);
 
   constructor(
@@ -27,6 +30,7 @@ export class AccountService {
     private readonly config: ConfigService,
     private readonly mail: MailService,
     private readonly sessions: SessionsService,
+    private readonly plans: PlansService,
   ) {}
 
   /**
@@ -35,6 +39,8 @@ export class AccountService {
    * aceite (/convite/:token).
    */
   async invite(accountId: string, dto: CreateInviteDto) {
+    await this.plans.assertCanInviteEditor(accountId);
+
     const email = dto.email.toLowerCase();
 
     // Ja existe um usuario com este email (em qualquer conta)?
@@ -46,24 +52,37 @@ export class AccountService {
       throw new ConflictException('Ja existe um usuario com este email');
     }
 
-    // Ja existe um convite pendente para este email nesta conta?
+    // Ja existe um convite pendente para este email nesta conta? Convite
+    // pendente mas ja expirado nao bloqueia: e cancelado automaticamente
+    // para abrir espaco para o novo.
     const pending = await this.prisma.invite.findFirst({
       where: { accountId, email, status: InviteStatus.pendente },
-      select: { id: true },
+      select: { id: true, expiresEm: true },
     });
     if (pending) {
-      throw new ConflictException(
-        'Ja existe um convite pendente para este email',
-      );
+      if (pending.expiresEm > new Date()) {
+        throw new ConflictException(
+          'Ja existe um convite pendente para este email',
+        );
+      }
+      await this.prisma.invite.update({
+        where: { id: pending.id },
+        data: { status: InviteStatus.cancelado },
+      });
     }
 
     const invite = await this.prisma.invite.create({
-      data: { accountId, email },
+      data: {
+        accountId,
+        email,
+        expiresEm: new Date(Date.now() + this.INVITE_TTL_MS),
+      },
       select: {
         id: true,
         email: true,
         status: true,
         token: true,
+        expiresEm: true,
         criadoEm: true,
       },
     });
@@ -79,6 +98,7 @@ export class AccountService {
       email: invite.email,
       status: invite.status,
       criadoEm: invite.criadoEm,
+      expiresAt: invite.expiresEm,
       // Exposto para facilitar teste/integracao enquanto o envio e simulado.
       inviteUrl,
     };
@@ -94,6 +114,9 @@ export class AccountService {
     });
     if (!invite || invite.status !== InviteStatus.pendente) {
       throw new NotFoundException('Convite invalido ou ja utilizado');
+    }
+    if (invite.expiresEm < new Date()) {
+      throw new GoneException('Convite expirado');
     }
 
     // O email pode ter sido cadastrado por outro caminho nesse meio tempo.
@@ -172,6 +195,8 @@ export class AccountService {
   /**
    * Owner dispara o e-mail real de convite (via provedor transacional) para
    * o endereco do convite. So funciona para convites ainda pendentes.
+   * Reenviar sempre renova a expiracao por mais 3 dias — se o convite
+   * anterior ja tinha expirado, o novo link volta a ser valido.
    */
   async sendInviteEmail(accountId: string, inviteId: string) {
     const invite = await this.prisma.invite.findFirst({
@@ -187,6 +212,12 @@ export class AccountService {
       );
     }
 
+    const expiresEm = new Date(Date.now() + this.INVITE_TTL_MS);
+    await this.prisma.invite.update({
+      where: { id: invite.id },
+      data: { expiresEm },
+    });
+
     const inviteUrl = this.buildInviteUrl(invite.token);
     await this.mail.send(
       invite.email,
@@ -194,24 +225,47 @@ export class AccountService {
       `Voce foi convidado(a) para colaborar como editor na APROVA. Acesse o link abaixo para criar sua senha:\n${inviteUrl}`,
     );
 
-    return { sent: true };
+    return { sent: true, expiresAt: expiresEm };
   }
 
-  /** Lista os membros (owner + editores) da conta. */
+  /**
+   * Lista os membros (owner + editores) da conta, junto com os convites
+   * ainda pendentes (aceito/cancelado nao aparecem aqui). Convites entram
+   * com `teamRole: editor` e `status: "invited"` — o front decide se exibe
+   * como "pendente" ou "expirado" comparando `expiresAt` com a hora atual.
+   */
   async listMembers(accountId: string) {
-    const members = await this.prisma.user.findMany({
-      where: { accountId },
-      orderBy: [{ role: 'asc' }, { criadoEm: 'asc' }],
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        role: true,
-        status: true,
-        criadoEm: true,
-      },
-    });
-    return members.map(toMemberDto);
+    const [members, invites] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { accountId },
+        orderBy: [{ role: 'asc' }, { criadoEm: 'asc' }],
+        select: {
+          id: true,
+          nome: true,
+          email: true,
+          role: true,
+          status: true,
+          criadoEm: true,
+        },
+      }),
+      this.prisma.invite.findMany({
+        where: { accountId, status: InviteStatus.pendente },
+        orderBy: { criadoEm: 'asc' },
+        select: { id: true, email: true, criadoEm: true, expiresEm: true },
+      }),
+    ]);
+
+    const invitedMembers = invites.map((invite) => ({
+      id: invite.id,
+      nome: null,
+      email: invite.email,
+      teamRole: UserRole.editor,
+      status: 'invited' as const,
+      criadoEm: invite.criadoEm,
+      expiresAt: invite.expiresEm,
+    }));
+
+    return [...members.map(toMemberDto), ...invitedMembers];
   }
 
   /**

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { PlansService } from '../plans/plans.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { ClientPhotoUploadUrlDto } from './dto/client-photo-upload-url.dto';
@@ -10,9 +11,11 @@ export class ClientsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly plans: PlansService,
   ) {}
 
-  create(accountId: string, dto: CreateClientDto) {
+  async create(accountId: string, dto: CreateClientDto) {
+    await this.plans.assertCanAddClient(accountId);
     return this.prisma.client.create({
       data: {
         nome: dto.nome,

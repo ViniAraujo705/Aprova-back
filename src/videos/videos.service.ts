@@ -6,11 +6,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { UserRole, VideoStatus } from '@prisma/client';
+import { Plan, UserRole, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { createWithUniqueLinkPublico } from '../common/short-id.util';
 import { StorageService } from '../storage/storage.service';
+import { PlansService } from '../plans/plans.service';
 import { VideoProcessingService } from './processing/video-processing.service';
+import {
+  VIDEO_PROCESSING_PRIORITY_DEFAULT,
+  VIDEO_PROCESSING_PRIORITY_HIGH,
+} from './processing/video-processing.constants';
 import { UploadUrlDto } from './dto/upload-url.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { NewVersionDto } from './dto/new-version.dto';
@@ -26,6 +31,7 @@ export class VideosService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly processing: VideoProcessingService,
+    private readonly plans: PlansService,
     config: ConfigService,
   ) {
     const maxMb =
@@ -40,6 +46,7 @@ export class VideosService {
 
   async create(accountId: string, dto: CreateVideoDto) {
     await this.assertProjectOwnership(accountId, dto.projectId);
+    await this.plans.assertCanCreateVideo(accountId);
     await this.validateUploadedFile(dto.urlStorage);
 
     // Se a versao nao for informada, calcula a proxima do projeto
@@ -68,7 +75,10 @@ export class VideosService {
     );
 
     // Dispara thumbnail + versão otimizada em background (não bloqueia a resposta)
-    await this.processing.enqueue(video.id);
+    await this.processing.enqueue(
+      video.id,
+      await this.processingPriority(accountId),
+    );
 
     return video;
   }
@@ -96,7 +106,10 @@ export class VideosService {
       }),
     );
 
-    await this.processing.enqueue(video.id);
+    await this.processing.enqueue(
+      video.id,
+      await this.processingPriority(accountId),
+    );
 
     return video;
   }
@@ -215,6 +228,14 @@ export class VideosService {
     ]);
 
     return { deleted: true };
+  }
+
+  /** Contas no plano Agencia processam antes das demais na fila. */
+  private async processingPriority(accountId: string): Promise<number> {
+    const plan = await this.plans.getPlan(accountId);
+    return plan === Plan.agencia
+      ? VIDEO_PROCESSING_PRIORITY_HIGH
+      : VIDEO_PROCESSING_PRIORITY_DEFAULT;
   }
 
   private async deleteStorageObjects(

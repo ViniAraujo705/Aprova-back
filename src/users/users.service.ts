@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { PlansService } from '../plans/plans.service';
 import { toMemberDto } from '../common/dto/team-role.util';
 import { UpdateBrandingDto } from './dto/update-branding.dto';
 import { LogoUploadUrlDto } from './dto/logo-upload-url.dto';
@@ -12,6 +13,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly plans: PlansService,
   ) {}
 
   /**
@@ -89,6 +91,10 @@ export class UsersService {
     accountId: string,
     dto: UpdateBrandingDto,
   ) {
+    if (dto.logoUrl !== undefined || dto.corDestaque !== undefined) {
+      await this.plans.assertFeature(accountId, 'whiteLabel');
+    }
+
     const [user, account] = await Promise.all([
       this.prisma.user.update({
         where: { id: userId },

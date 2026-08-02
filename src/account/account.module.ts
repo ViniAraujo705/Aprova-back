@@ -4,10 +4,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AccountController } from './account.controller';
 import { AccountService } from './account.service';
 import { SessionsModule } from '../sessions/sessions.module';
+import { PlansModule } from '../plans/plans.module';
 
 @Module({
   imports: [
     SessionsModule,
+    PlansModule,
     // Mesma config do AuthModule: o aceite de convite emite um token de
     // login para o editor recem-criado.
     JwtModule.registerAsync({

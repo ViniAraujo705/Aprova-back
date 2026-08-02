@@ -5,9 +5,13 @@ import { VideosController } from './videos.controller';
 import { VIDEO_PROCESSING_QUEUE } from './processing/video-processing.constants';
 import { VideoProcessingService } from './processing/video-processing.service';
 import { VideoProcessingProcessor } from './processing/video-processing.processor';
+import { PlansModule } from '../plans/plans.module';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: VIDEO_PROCESSING_QUEUE })],
+  imports: [
+    BullModule.registerQueue({ name: VIDEO_PROCESSING_QUEUE }),
+    PlansModule,
+  ],
   controllers: [VideosController],
   providers: [VideosService, VideoProcessingService, VideoProcessingProcessor],
   exports: [VideosService],

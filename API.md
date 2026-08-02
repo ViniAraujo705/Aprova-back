@@ -18,6 +18,7 @@ enviar e o que esperar de volta. Revisado a partir do código-fonte em
 - [Conta / equipe (convites, membros e sessões)](#conta--equipe-account)
 - [Perfil](#perfil-usersme)
 - [Branding / white label](#branding--white-label-users)
+- [Planos](#planos-plans)
 - [Notificações](#notificações-notifications)
 - [Dashboard](#dashboard)
 - [Relatório do projeto (PDF)](#relatório-do-projeto-pdf)
@@ -474,36 +475,52 @@ Resposta:
 
 | Método | Rota | Auth | Body | Retorno |
 |---|---|---|---|---|
-| `POST` | `/account/invite` | `owner` | `{ email }` | `{ id, email, status, criadoEm, inviteUrl }` |
+| `POST` | `/account/invite` | `owner` | `{ email }` | `{ id, email, status, criadoEm, expiresAt, inviteUrl }` |
 | `POST` | `/account/invite/:token/accept` | **sem autenticação** | `{ nome, senha }` | `{ user, access_token }` |
-| `POST` | `/account/invite/:id/send-email` | `owner` | — | `{ sent: true }` |
+| `POST` | `/account/invite/:id/send-email` | `owner` | — | `{ sent: true, expiresAt }` |
 | `DELETE` | `/account/invite/:id` | `owner` | — | `204 No Content` |
 | `GET` | `/account/members` | `owner` | — | `Member[]` |
 | `PATCH` | `/account/members/:id/status` | `owner` | `{ status: "ativo" \| "suspenso" }` | `Member` atualizado |
 | `PATCH` | `/account/members/:id/role` | `owner` | `{ teamRole: "owner" }` | `Member` atualizado |
 
-- `invite`: cria convite pendente para um editor. `inviteUrl` é o link
-  completo (`<CORS_ORIGIN>/convite/:token`) — hoje o envio de email é
-  simulado (só loga no backend), então o frontend/owner precisa repassar
-  esse link manualmente. `409` se já existe usuário ou convite pendente
-  para o email.
+- `invite`: cria convite pendente para um editor, com expiração em 3 dias
+  (`expiresAt`, ISO 8601). `inviteUrl` é o link completo
+  (`<CORS_ORIGIN>/convite/:token`) — hoje o envio de email é simulado (só
+  loga no backend), então o frontend/owner precisa repassar esse link
+  manualmente. `409` se já existe usuário ou convite **ainda válido**
+  (`expiresAt` no futuro) pendente para o email — se o convite pendente
+  anterior já expirou, ele é cancelado automaticamente e um novo é criado
+  sem erro.
 - `accept`: fluxo público (tela `/convite/:token` no frontend). `:token` é
   o UUID do convite. Cria o usuário `editor` e retorna token de sessão já
-  logado, igual ao login. `404` se o convite já foi usado/não existe.
+  logado, igual ao login. `404` se o convite já foi usado/não existe/foi
+  cancelado. `410 Gone` se o convite existe e está `pendente` mas
+  `expiresAt` já passou.
 - `cancelInvite`: `:id` é o id do convite (mesmo `id` retornado por
   `invite`). Só cancela convites com status `pendente` (`400` se já foi
   aceito/cancelado). `404` se o convite não existe ou não pertence à
   conta do owner autenticado.
 - `sendInviteEmail`: envia (de verdade, via provedor transacional —
   Resend) o e-mail de convite para `invite.email`, com o mesmo `inviteUrl`
-  retornado por `invite`. Só funciona com convite `pendente` (`409` se já
-  foi aceito/cancelado). `404` se o convite não existe ou não pertence à
+  retornado por `invite`. Renova `expiresAt` para +3 dias a partir de
+  agora (mesmo se o convite anterior já tinha expirado — o novo link volta
+  a ser válido). Só funciona com convite `pendente` (`409` se já foi
+  aceito/cancelado). `404` se o convite não existe ou não pertence à
   conta do owner autenticado. `502` se o provedor falhar/recusar o envio.
   Limitado a 3 chamadas/minuto por IP (`@Throttle`) para evitar spam de
   reenvio. Sem `RESEND_API_KEY` configurada, o envio é simulado via log
   (mesmo padrão do `inviteUrl` simulado hoje).
-- `members`: lista `owner` + `editores` da conta.
-  `Member`: `{ id, nome, email, teamRole, status, criadoEm }`.
+- `members`: lista `owner` + `editores` da conta **e** os convites ainda
+  `pendente` da conta (aceitos/cancelados não aparecem). Convites entram
+  como `{ id: <id do convite>, nome: null, email, teamRole: "editor",
+  status: "invited", criadoEm, expiresAt }` — o `id` é o mesmo usado em
+  `DELETE /account/invite/:id` e `POST /account/invite/:id/send-email`. O
+  backend não distingue "expirado" via status: o front compara
+  `expiresAt` com a hora atual para decidir se mostra "pendente" ou
+  "expirado" (convite expirado continua com `status: "invited"` até ser
+  cancelado ou reenviado).
+  `Member`: `{ id, nome, email, teamRole, status, criadoEm, expiresAt? }`
+  — `expiresAt` só aparece nos itens com `status: "invited"`.
 - `setMemberStatus`: uma conta pode ter mais de um `owner`. `editor` pode
   ser suspenso/reativado livremente. `owner` também pode ser suspenso,
   mas `400` se for o único `owner` ativo da conta (a conta nunca pode
@@ -621,6 +638,62 @@ Esse branding (`logoUrl`/`corDestaque`/`nomeAgencia`) é o que aparece para o
 > mesmo nome `nome` na entrada — não confundir os dois no front. `nomeAgencia`
 > vem sempre no retorno (mesmo em um PATCH que só mexeu em `logoUrl`), então
 > dá pra usar a resposta para refrescar o estado inteiro do branding.
+
+---
+
+## Planos (`/plans`)
+Autenticado — `owner` ou `editor`.
+
+| Método | Rota | Body | Retorno |
+|---|---|---|---|
+| `GET` | `/plans/me` | — | `{ plan, limits, usage }` |
+
+```json
+{
+  "plan": "free",
+  "limits": {
+    "maxClients": 3,
+    "maxVideosPerMonth": 8,
+    "maxRatingQuestions": 3,
+    "maxExtraEditors": 0,
+    "whiteLabel": false,
+    "pdfReports": false,
+    "priorityQueue": false,
+    "storageGb": 5
+  },
+  "usage": {
+    "clients": 2,
+    "extraEditors": 0,
+    "videosThisMonth": 5,
+    "ratingQuestions": 3
+  }
+}
+```
+
+Planos: `free`, `pro`, `agencia`. `limits.*` com valor `null` significa
+ilimitado. `storageGb` é só informativo (exibição na UI) — não há
+enforcement de armazenamento hoje, pois o tamanho do arquivo de vídeo não é
+persistido (mesma limitação descrita em `GET /admin/metrics`).
+
+Não existe gateway de pagamento integrado ainda — a troca de plano hoje é
+manual, via `PATCH /admin/accounts/:id/plan` (seção [Admin](#admin)). Toda
+conta nova começa no plano `free`.
+
+Ações bloqueadas pelo limite do plano respondem `403 Forbidden` com uma
+mensagem explicando o limite atingido (ex: "Limite de 3 clientes do plano
+free atingido..."). Isso acontece em:
+- `POST /clients` — limite de clientes (`maxClients`)
+- `POST /account/invite` — limite de editores (`maxExtraEditors`; convites
+  pendentes contam)
+- `POST /videos` — limite de vídeos no mês (`maxVideosPerMonth`; novas
+  versões de um vídeo existente não contam)
+- `POST /rating-questions` — limite de perguntas (`maxRatingQuestions`)
+- `PATCH /users/me/branding` (quando envia `logoUrl` ou `corDestaque`) —
+  exige `whiteLabel`
+- `GET /projects/:id/report` — exige `pdfReports`
+
+Contas no plano `agencia` também têm prioridade na fila de processamento
+de vídeo (thumbnail/otimização) sobre os demais planos.
 
 ---
 
@@ -857,6 +930,7 @@ Autenticado — **somente role `admin`**.
 | `PATCH` | `/admin/users/:id/status` | `{ status: "ativo" \| "suspenso" }` | usuário atualizado |
 | `GET` | `/admin/metrics` | — | métricas gerais da plataforma |
 | `GET` | `/admin/videos/errors` | — | vídeos com `status = erro` |
+| `PATCH` | `/admin/accounts/:id/plan` | `{ plan: "free" \| "pro" \| "agencia" }` | `{ id, nomeAgencia, plan }` |
 
 `GET /admin/users` → cada item:
 ```json
@@ -876,6 +950,11 @@ upload vai direto pro R2)
 
 `GET /admin/videos/errors` → cada item inclui `project.account.users[0]`
 (o owner responsável, para contato).
+
+`PATCH /admin/accounts/:id/plan` → `:id` é o `Account.id` (não o id do
+usuário/owner — ver `account.id` em `GET /admin/users`). Troca manual de
+plano, já que não há gateway de pagamento integrado (ver [Planos](#planos-plans)).
+`404` se a conta não existe.
 
 ---
 
