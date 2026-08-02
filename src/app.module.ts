@@ -22,6 +22,7 @@ import { RatingQuestionsModule } from './rating-questions/rating-questions.modul
 import { TeamModule } from './team/team.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlansModule } from './plans/plans.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { PlansModule } from './plans/plans.module';
     TeamModule,
     NotificationsModule,
     PlansModule,
+    BillingModule,
   ],
   providers: [
     {
