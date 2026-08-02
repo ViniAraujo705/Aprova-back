@@ -50,7 +50,11 @@ export class AbacatePayService {
       items: [{ id: params.productId, quantity: 1 }],
       customerId: params.customerId,
       externalId: params.externalId,
-      methods: params.methods ?? ['PIX', 'CARD'],
+      // PIX recorrente ("PIX Automatico") exige habilitacao separada da
+      // loja na AbacatePay (autorizacao bancaria de debito recorrente) —
+      // por enquanto so cartao funciona pra assinatura. Ajustar pra
+      // ["PIX", "CARD"] quando a loja tiver isso habilitado.
+      methods: params.methods ?? ['CARD'],
       completionUrl: params.completionUrl,
       retryPolicy: { maxRetry: 3, retryEvery: 2 },
     });
