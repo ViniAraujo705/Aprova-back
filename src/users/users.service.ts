@@ -17,6 +17,37 @@ export class UsersService {
   ) {}
 
   /**
+   * Dados do proprio usuario logado + branding (white label) da agencia.
+   * Usado pelo painel para restaurar logo/cor/nome da agencia sem depender
+   * da resposta do login (ex.: apos um refresh de pagina).
+   */
+  async me(userId: string, accountId: string) {
+    const [user, account] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: {
+          id: true,
+          nome: true,
+          email: true,
+          role: true,
+          status: true,
+          accountId: true,
+          avatarUrl: true,
+          logoUrl: true,
+          corDestaque: true,
+          criadoEm: true,
+        },
+      }),
+      this.prisma.account.findUniqueOrThrow({
+        where: { id: accountId },
+        select: { nomeAgencia: true },
+      }),
+    ]);
+
+    return { ...toMemberDto(user), nomeAgencia: account.nomeAgencia };
+  }
+
+  /**
    * Atualiza os dados do proprio usuario logado (nome/email/foto).
    * Nao exige reautenticacao para trocar o email — o JWT identifica o
    * usuario pelo id (ver JwtStrategy), entao a troca nao invalida a sessao.

@@ -21,6 +21,7 @@ enviar e o que esperar de volta. Revisado a partir do código-fonte em
 - [Planos](#planos-plans)
 - [Pagamento](#pagamento-billing)
 - [Notificações](#notificações-notifications)
+- [Calendário de gravações](#calendário-de-gravações-recording-events)
 - [Dashboard](#dashboard)
 - [Relatório do projeto (PDF)](#relatório-do-projeto-pdf)
 - [Acesso público do cliente (sem autenticação)](#acesso-público-do-cliente-sem-autenticação)
@@ -101,11 +102,17 @@ Body:
 Resposta `201`:
 ```json
 {
-  "user": { "id": "...", "nome": "Maria Silva", "email": "maria@agencia.com", "teamRole": "owner", "status": "ativo", "accountId": "...", "criadoEm": "..." },
+  "user": { "id": "...", "nome": "Maria Silva", "email": "maria@agencia.com", "teamRole": "owner", "status": "ativo", "accountId": "...", "logoUrl": null, "corDestaque": null, "nomeAgencia": "Agência Maria", "criadoEm": "..." },
   "access_token": "eyJhbGciOi..."
 }
 ```
 Erros: `409` se já existe conta com o email.
+
+> `logoUrl`/`corDestaque`/`nomeAgencia` são o branding (white label) da
+> agência — ver [Branding / white label](#branding--white-label-usersme).
+> Vêm em toda resposta de autenticação (`register`, `login`, `google`,
+> `apple`) e também em `GET /users/me`, então o frontend não precisa de uma
+> chamada extra só pra pintar a cor/logo depois do login.
 
 ### `POST /auth/login`
 Sem autenticação. Rate limit: **5/min**.
@@ -588,8 +595,18 @@ Autenticado — qualquer role (`owner`, `editor`, `admin`).
 
 | Método | Rota | Body | Retorno |
 |---|---|---|---|
+| `GET` | `/users/me` | — | Perfil do usuário logado + branding da agência |
 | `PATCH` | `/users/me` | `{ nome?, email?, fotoUrl? }` | `User` atualizado (shape de `/auth/login` + `fotoUrl`) |
 | `POST` | `/users/me/photo-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
+
+`GET /users/me` devolve:
+```json
+{ "id": "...", "nome": "...", "email": "...", "teamRole": "owner", "status": "ativo", "accountId": "...", "fotoUrl": "...", "logoUrl": "...", "corDestaque": "#1E90FF", "nomeAgencia": "Agência Maria", "criadoEm": "..." }
+```
+Use este endpoint pra restaurar logo/cor/nome da agência num refresh de
+página — o mesmo shape (`logoUrl`/`corDestaque`/`nomeAgencia`) já vem em
+`register`/`login`/`google`/`apple`, então na maioria dos casos não precisa
+chamar `GET /users/me` logo após o login.
 
 Todos os campos do `PATCH` são opcionais — atualiza só o que vier no body.
 Resposta:
@@ -774,6 +791,43 @@ token (nunca cruza contas ou usuários).
   do cliente que a disparou (comentário/aprovação/rating/ajuste) continua
   respondendo normalmente — a notificação simplesmente não é criada, sem
   quebrar o fluxo público.
+
+---
+
+## Calendário de gravações (`/recording-events`)
+Autenticado — roles `owner`, `editor`. Escopado à `accountId` do token.
+
+| Método | Rota | Body | Retorno |
+|---|---|---|---|
+| `POST` | `/recording-events` | `{ titulo, dataInicio, dataFim?, clienteId?, membroId?, observacoes? }` | `RecordingEvent` criado |
+| `GET` | `/recording-events` | — | `RecordingEvent[]` (ordenado por `dataInicio` asc) |
+| `GET` | `/recording-events/:id` | — | `RecordingEvent` |
+| `PATCH` | `/recording-events/:id` | mesmos campos do `POST`, todos opcionais | `RecordingEvent` atualizado |
+| `DELETE` | `/recording-events/:id` | — | `{ "deleted": true }` |
+
+`titulo` e `dataInicio` (ISO 8601) são obrigatórios no `POST`. `dataFim`,
+`clienteId`, `membroId` e `observacoes` são opcionais/nuláveis — a gravação
+pode ser lançada antes de definir cliente ou responsável.
+
+`RecordingEvent`:
+```json
+{
+  "id": "uuid",
+  "titulo": "Gravação campanha verão",
+  "dataInicio": "2026-08-10T13:00:00.000Z",
+  "dataFim": "2026-08-10T15:00:00.000Z",
+  "clienteId": "uuid ou null",
+  "membroId": "uuid ou null",
+  "observacoes": "Levar tripé extra",
+  "clienteNome": "Cliente A" ,
+  "membroNome": "João Editor"
+}
+```
+`clienteNome`/`membroNome` vêm nulos se `clienteId`/`membroId` forem nulos.
+
+Erros: `400` se `clienteId` não corresponder a um `Client` da mesma conta,
+ou `membroId` a um `User` (owner/editor) da mesma conta · `404` se `:id` do
+evento não existir ou não pertencer à conta.
 
 ---
 

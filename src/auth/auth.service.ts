@@ -359,7 +359,13 @@ export class AuthService {
    * pois o JWT carrega o id dela na claim `sid` (ver JwtStrategy).
    */
   private async buildAuthResponse(user: User, meta: SessionMeta) {
-    const session = await this.sessions.createSession(user.id, meta);
+    const [session, account] = await Promise.all([
+      this.sessions.createSession(user.id, meta),
+      this.prisma.account.findUnique({
+        where: { id: user.accountId },
+        select: { nomeAgencia: true },
+      }),
+    ]);
     return {
       user: toMemberDto({
         id: user.id,
@@ -368,6 +374,11 @@ export class AuthService {
         role: user.role,
         status: user.status,
         accountId: user.accountId,
+        // Branding (white label) da agencia: o painel/cliente precisa disso
+        // logo apos o login, sem depender de uma segunda chamada.
+        logoUrl: user.logoUrl,
+        corDestaque: user.corDestaque,
+        nomeAgencia: account?.nomeAgencia ?? null,
         criadoEm: user.criadoEm,
       }),
       access_token: this.signToken(

@@ -23,6 +23,7 @@ import { TeamModule } from './team/team.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlansModule } from './plans/plans.module';
 import { BillingModule } from './billing/billing.module';
+import { RecordingEventsModule } from './recording-events/recording-events.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { BillingModule } from './billing/billing.module';
     NotificationsModule,
     PlansModule,
     BillingModule,
+    RecordingEventsModule,
   ],
   providers: [
     {

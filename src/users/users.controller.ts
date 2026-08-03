@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Patch,
@@ -31,6 +32,16 @@ const ANY_ROLE = [UserRole.owner, UserRole.editor, UserRole.admin];
 @Roles(UserRole.owner)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get()
+  @Roles(...ANY_ROLE)
+  @ApiOperation({
+    summary:
+      'Dados do proprio usuario logado + branding (logo/cor/nome) da agencia.',
+  })
+  me(@CurrentUser() user: AuthUser) {
+    return this.usersService.me(user.id, user.accountId);
+  }
 
   @Patch()
   @Roles(...ANY_ROLE)

@@ -89,6 +89,7 @@ model Account {
   invites         Invite[]
   ratingQuestions RatingQuestion[]
   notifications   Notification[]
+  recordingEvents RecordingEvent[]
 
   @@map("accounts")
 }
@@ -119,6 +120,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   notifications       Notification[]
   sessions            Session[]
+  recordingEvents     RecordingEvent[]
 
   @@index([accountId])
   @@map("users")
@@ -177,6 +179,30 @@ model Invite {
   @@map("invites")
 }
 
+// Evento do calendário de gravações (agenda da agência). Cliente e membro
+// responsável são opcionais — a gravação pode ser lançada antes de ambos
+// estarem definidos.
+model RecordingEvent {
+  id          String    @id @default(uuid())
+  accountId   String    @map("account_id")
+  titulo      String
+  dataInicio  DateTime  @map("data_inicio")
+  dataFim     DateTime? @map("data_fim")
+  clienteId   String?   @map("cliente_id")
+  membroId    String?   @map("membro_id")
+  observacoes String?
+  criadoEm    DateTime  @default(now()) @map("criado_em")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cliente Client?  @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  membro  User?    @relation(fields: [membroId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([clienteId])
+  @@index([membroId])
+  @@map("recording_events")
+}
+
 model Client {
   id        String  @id @default(uuid())
   nome      String
@@ -189,8 +215,9 @@ model Client {
   // Marca dados de exemplo criados no onboarding, para o usuario poder deletar
   isExemplo Boolean @default(false) @map("is_exemplo")
 
-  account  Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  projects Project[]
+  account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  projects        Project[]
+  recordingEvents RecordingEvent[]
 
   @@index([accountId])
   @@map("clients")
