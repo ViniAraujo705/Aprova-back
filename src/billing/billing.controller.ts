@@ -6,11 +6,8 @@ import {
   Headers,
   Post,
   Query,
-  Req,
-  RawBodyRequest,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -52,22 +49,26 @@ export class BillingController {
   }
 
   /**
-   * Chamado pela AbacatePay (sem autenticacao JWT — a autenticidade vem da
-   * verificacao de assinatura HMAC + secret na query string, dentro do
-   * service). Precisa do corpo bruto (ver rawBody: true em main.ts).
+   * Chamado pela Mercado Pago (sem autenticacao JWT — autenticidade vem da
+   * verificacao de assinatura HMAC via query string + headers, dentro do
+   * service). O payload da Mercado Pago e magro (so o id do recurso); o
+   * estado real da assinatura e buscado na API dentro do service.
    */
-  @Post('webhooks/abacatepay')
+  @Post('webhooks/mercadopago')
   @HttpCode(HttpStatus.OK)
   @ApiExcludeEndpoint()
   async handleWebhook(
-    @Req() req: RawBodyRequest<Request>,
-    @Headers('x-webhook-signature') signature: string | undefined,
-    @Query('webhookSecret') webhookSecret: string | undefined,
+    @Query('data.id') dataId: string | undefined,
+    @Query('type') queryType: string | undefined,
+    @Headers('x-signature') xSignature: string | undefined,
+    @Headers('x-request-id') xRequestId: string | undefined,
+    @Body() body: { type?: string; data?: { id?: string } },
   ) {
     await this.billingService.processWebhook(
-      req.rawBody,
-      signature,
-      webhookSecret,
+      dataId ?? body?.data?.id,
+      xSignature,
+      xRequestId,
+      queryType ?? body?.type,
     );
     return { received: true };
   }

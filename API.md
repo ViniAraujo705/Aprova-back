@@ -699,32 +699,33 @@ de vídeo (thumbnail/otimização) sobre os demais planos.
 ---
 
 ## Pagamento (`/billing`)
-Gateway: **AbacatePay**. Assinatura recorrente (PIX ou cartão) para os
-planos `pro`/`agencia`. `free` não é assinável (é o padrão de toda conta
-nova).
+Gateway: **Mercado Pago** (API de Assinaturas / Preapproval). Assinatura
+recorrente via cartão pra os planos `pro`/`agencia`. `free` não é
+assinável (é o padrão de toda conta nova).
 
 | Método | Rota | Auth | Body | Retorno |
 |---|---|---|---|---|
 | `POST` | `/billing/checkout` | `owner` | `{ plan: "pro"\|"agencia", cycle: "MONTHLY"\|"ANNUALLY" }` | `{ url }` |
 | `POST` | `/billing/cancel` | `owner` | — | `{ plan: "free" }` |
-| `POST` | `/billing/webhooks/abacatepay` | **sem autenticação** (verificado por assinatura) | payload da AbacatePay | `{ received: true }` |
+| `POST` | `/billing/webhooks/mercadopago` | **sem autenticação** (verificado por assinatura) | payload da Mercado Pago | `{ received: true }` |
 
-- `checkout`: cria (ou reaproveita) o cliente da AbacatePay para o owner da
-  conta e devolve `url` — o frontend deve **redirecionar** o usuário pra
-  essa URL (checkout hospedado da AbacatePay, escolhe PIX ou cartão lá).
-  `404` se o produto do plano/ciclo ainda não foi sincronizado (ver
-  `POST /admin/billing/sync-products`). `502` se a AbacatePay estiver fora
-  do ar ou a API key não estiver configurada.
-- `cancel`: cancela a assinatura ativa na AbacatePay e já rebaixa a conta
-  pra `free` na mesma hora (sem período de graça — mesma política da
-  AbacatePay). `400` se a conta não tem assinatura ativa.
-- `webhooks/abacatepay`: endpoint interno, chamado pela AbacatePay quando o
-  pagamento é confirmado/renovado/cancelado — o frontend nunca chama isso
-  diretamente. Ao confirmar pagamento (`subscription.completed` ou
-  `subscription.renewed`), o backend atualiza `Account.plan` automaticamente;
-  `GET /plans/me` reflete a mudança assim que o webhook é processado
-  (normalmente segundos após o pagamento). `401` se a assinatura HMAC ou o
-  `webhookSecret` da query string não baterem.
+- `checkout`: cria a assinatura (preapproval) na Mercado Pago com o email
+  do owner da conta e devolve `url` (`init_point`) — o frontend deve
+  **redirecionar** o usuário pra essa URL, a própria tela hospedada da
+  Mercado Pago onde ele autoriza a cobrança recorrente com o cartão dele.
+  `502` se a Mercado Pago estiver fora do ar ou o access token não
+  estiver configurado.
+- `cancel`: cancela a assinatura ativa na Mercado Pago e já rebaixa a
+  conta pra `free` na mesma hora (sem período de graça). `400` se a
+  conta não tem assinatura ativa.
+- `webhooks/mercadopago`: endpoint interno, chamado pela Mercado Pago
+  quando o status da assinatura muda — o frontend nunca chama isso
+  diretamente. O payload da Mercado Pago só traz o id do recurso; o
+  backend busca o estado atual da assinatura na API deles antes de
+  decidir. Quando o status vira `authorized`, `Account.plan` é atualizado
+  automaticamente; `GET /plans/me` reflete a mudança assim que o webhook
+  é processado. `401` se a assinatura do webhook (`X-Signature` +
+  `X-Request-Id` + `data.id`) não bater.
 
 ---
 
@@ -962,7 +963,6 @@ Autenticado — **somente role `admin`**.
 | `GET` | `/admin/metrics` | — | métricas gerais da plataforma |
 | `GET` | `/admin/videos/errors` | — | vídeos com `status = erro` |
 | `PATCH` | `/admin/accounts/:id/plan` | `{ plan: "free" \| "pro" \| "agencia" }` | `{ id, nomeAgencia, plan }` |
-| `POST` | `/admin/billing/sync-products` | — | `{ created: string[], alreadyExisted: string[] }` |
 
 `GET /admin/users` → cada item:
 ```json
@@ -987,11 +987,6 @@ upload vai direto pro R2)
 usuário/owner — ver `account.id` em `GET /admin/users`). Troca manual de
 plano — fallback do fluxo real de assinatura (ver [Pagamento](#pagamento-billing)).
 `404` se a conta não existe.
-
-`POST /admin/billing/sync-products` → cria na AbacatePay os produtos
-(Pro/Agência × mensal/anual) que ainda não existirem. Idempotente — rodar
-de novo não duplica nada. Precisa ser chamado pelo menos uma vez (por
-ambiente/chave de API) antes do primeiro `POST /billing/checkout` funcionar.
 
 ---
 

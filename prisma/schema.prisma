@@ -78,10 +78,9 @@ model Account {
   id          String   @id @default(uuid())
   nomeAgencia String   @map("nome_agencia")
   plan        Plan     @default(free)
-  // Assinatura paga (AbacatePay). Nulos ate a primeira assinatura ser
-  // criada/confirmada — ver src/billing/billing.service.ts.
-  abacatepayCustomerId     String? @map("abacatepay_customer_id")
-  abacatepaySubscriptionId String? @unique @map("abacatepay_subscription_id")
+  // Assinatura paga (Mercado Pago — Preapproval). Nulo ate a primeira
+  // assinatura ser criada/confirmada — ver src/billing/billing.service.ts.
+  mercadopagoSubscriptionId String? @unique @map("mercadopago_subscription_id")
   criadoEm    DateTime @default(now()) @map("criado_em")
 
   users           User[]

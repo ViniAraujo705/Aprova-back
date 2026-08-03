@@ -5,7 +5,6 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
-  Post,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -15,7 +14,6 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AdminService } from './admin.service';
 import { PlansService } from '../plans/plans.service';
-import { BillingProductsService } from '../billing/billing-products.service';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateAccountPlanDto } from './dto/update-account-plan.dto';
 
@@ -28,7 +26,6 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly plansService: PlansService,
-    private readonly billingProductsService: BillingProductsService,
   ) {}
 
   @Get('users')
@@ -60,16 +57,6 @@ export class AdminController {
     @Body() dto: UpdateAccountPlanDto,
   ) {
     return this.plansService.setPlan(id, dto.plan);
-  }
-
-  /**
-   * Cria na AbacatePay os produtos (Pro/Agencia x mensal/anual) que ainda
-   * nao existirem, casando por externalId. Idempotente — rodar de novo nao
-   * duplica nada. Precisa rodar antes do primeiro checkout funcionar.
-   */
-  @Post('billing/sync-products')
-  syncBillingProducts() {
-    return this.billingProductsService.ensureProducts();
   }
 
   @Get('videos/errors')
