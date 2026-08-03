@@ -293,7 +293,8 @@ model Comment {
   id             String            @id @default(uuid())
   videoId        String            @map("video_id")
   timestampVideo Int               @map("timestamp_video")
-  texto          String
+  // Nulo quando o comentario e so de audio (audioUrl preenchido).
+  texto          String?
   // Canal do comentario (cliente | interno) — isola as duas conversas.
   channel        CommentChannel    @default(cliente)
   // Tipo do autor (owner | editor | cliente).
@@ -302,6 +303,9 @@ model Comment {
   autorUserId    String?           @map("autor_user_id")
   // Nome livre do autor cliente (usado quando autor_type = cliente).
   autorNome      String?           @map("autor_nome")
+  // Comentario por audio do cliente (alternativa ao texto, nao obrigatorio
+  // os dois juntos). URL publica do arquivo no R2.
+  audioUrl       String?           @map("audio_url")
   // Resposta em thread: aponta pro comentario pai (mesmo canal).
   // Campo exposto na API como "parentId" (front so reconhece esse nome);
   // a coluna no banco permanece parent_comment_id via @map.

@@ -84,7 +84,7 @@ export class ProjectReportService {
       criadoEm: Date;
       comments: {
         timestampVideo: number;
-        texto: string;
+        texto: string | null;
         autorNome: string | null;
         criadoEm: Date;
         autorUser: { nome: string } | null;
@@ -165,7 +165,8 @@ export class ProjectReportService {
                 text: `${c.autorNome ?? c.autorUser?.nome ?? 'Agencia'}: `,
                 bold: true,
               },
-              c.texto,
+              // Comentario pode ser so de audio (sem texto).
+              c.texto ?? '(comentário em áudio)',
               {
                 text: `  (${this.formatDate(c.criadoEm)})`,
                 style: 'small',

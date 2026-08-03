@@ -934,7 +934,7 @@ Resposta:
   "cliente": { "nome": "Cliente A", "descricao": "... ou null", "fotoUrl": "https://... ou null" },
   "agencia": { "nome": "Agência Maria", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
   "comments": [
-    { "id": "...", "timestampVideo": 12, "texto": "...", "autorType": "cliente", "autorNome": "Fulano", "autorUser": null, "parentId": null, "criadoEm": "...", "isAgencyReply": false }
+    { "id": "...", "timestampVideo": 12, "texto": "... ou null (comentário só de áudio)", "audioUrl": "https://... ou null", "autorType": "cliente", "autorNome": "Fulano", "autorUser": null, "parentId": null, "criadoEm": "...", "isAgencyReply": false }
   ],
   "ratings": [
     { "id": "...", "ratingQuestionId": "uuid", "nota": 4, "criadoEm": "..." }
@@ -974,13 +974,31 @@ Resposta:
   dados internos da agência) — equivalente ao item de `videos` da galeria
   do projeto, mas sem `statusProcessamento`/`versao`.
 
+### `POST /public/videos/:linkPublico/comments/audio-upload-url`
+Rate limit: **20/min**.
+
+Body: `{ "nomeArquivo": "comentario-1712345678.webm", "contentType": "audio/webm" }`
+(`contentType` deve ser um de: `audio/webm`, `audio/ogg`, `audio/mp4`,
+`audio/mpeg`, `audio/wav`)
+
+Resposta: `{ uploadUrl, key, publicUrl, expiresIn }` — mesmo mecanismo do
+[`POST /videos/upload-url`](#post-videosupload-url): o front faz `PUT`
+direto em `uploadUrl` com o binário do áudio, depois manda `publicUrl`
+como `audioUrl` no `POST .../comments` abaixo. `404` se `:linkPublico`
+não existir.
+
 ### `POST /public/videos/:linkPublico/comments`
 Rate limit: **20/min**.
 
-Body: `{ "timestampVideo": 12, "texto": "...", "autorNome": "Fulano" }`
-(`texto` até 2000 chars, `autorNome` até 120 chars, ambos obrigatórios)
+Body: `{ "timestampVideo": 12, "texto": "...", "autorNome": "Fulano", "audioUrl": "https://... (opcional)" }`
+(`texto` até 2000 chars, `autorNome` até 120 chars obrigatório, `audioUrl`
+opcional — URL pública retornada pelo upload acima). `texto` e `audioUrl`
+são ambos opcionais, mas **pelo menos um dos dois é obrigatório** — o
+microfone é uma alternativa ao campo de texto, não um complemento
+obrigatório (`400` se os dois vierem vazios).
 
-Cria comentário no canal cliente (autor = cliente, sem login).
+Cria comentário no canal cliente (autor = cliente, sem login). Resposta
+inclui `texto` (pode vir `null`) e `audioUrl` (`null` se não houver áudio).
 
 ### `POST /public/videos/:linkPublico/ratings`
 Rate limit: **20/min**.

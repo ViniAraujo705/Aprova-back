@@ -13,6 +13,7 @@ import { PublicService } from './public.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { ApproveVideoDto } from './dto/approve-video.dto';
+import { AudioUploadUrlDto } from './dto/audio-upload-url.dto';
 
 /**
  * Rotas de acesso do cliente - SEM autenticacao.
@@ -32,6 +33,16 @@ export class PublicController {
   })
   getVideo(@Param('linkPublico') linkPublico: string) {
     return this.publicService.getVideo(linkPublico);
+  }
+
+  @Post(':linkPublico/comments/audio-upload-url')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  createCommentAudioUploadUrl(
+    @Param('linkPublico') linkPublico: string,
+    @Body() dto: AudioUploadUrlDto,
+  ) {
+    return this.publicService.createCommentAudioUploadUrl(linkPublico, dto);
   }
 
   @Post(':linkPublico/comments')

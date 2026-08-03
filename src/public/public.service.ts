@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   CommentAuthorType,
   CommentChannel,
@@ -8,15 +12,18 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { ApproveVideoDto } from './dto/approve-video.dto';
+import { AudioUploadUrlDto } from './dto/audio-upload-url.dto';
 
 @Injectable()
 export class PublicService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -96,6 +103,7 @@ export class PublicService {
           id: true,
           timestampVideo: true,
           texto: true,
+          audioUrl: true,
           autorType: true,
           autorNome: true,
           // Respostas do owner ao cliente aparecem no mesmo canal; o nome
@@ -187,12 +195,21 @@ export class PublicService {
   }
 
   async addComment(linkPublico: string, dto: CreateCommentDto) {
+    // O mic e uma alternativa ao campo de texto: aceita so audio, so texto,
+    // ou os dois, mas nao um comentario totalmente vazio.
+    if (!dto.texto && !dto.audioUrl) {
+      throw new BadRequestException(
+        'Informe texto ou audioUrl para o comentario',
+      );
+    }
+
     const video = await this.resolveVideo(linkPublico);
     const comment = await this.prisma.comment.create({
       data: {
         videoId: video.id,
         timestampVideo: dto.timestampVideo,
         texto: dto.texto,
+        audioUrl: dto.audioUrl,
         // Comentario do cliente externo (sem login): canal cliente,
         // autor cliente, nome livre.
         channel: CommentChannel.cliente,
@@ -203,6 +220,7 @@ export class PublicService {
         id: true,
         timestampVideo: true,
         texto: true,
+        audioUrl: true,
         autorType: true,
         autorNome: true,
         criadoEm: true,
@@ -213,6 +231,24 @@ export class PublicService {
       NotificationType.comentario_cliente,
     );
     return comment;
+  }
+
+  /**
+   * Presigned URL para upload direto do audio do comentario no R2 (mesmo
+   * mecanismo do upload de video, so que sem autenticacao - rota publica
+   * do cliente). O front sobe o arquivo via PUT em uploadUrl e depois
+   * manda o publicUrl como audioUrl em POST .../comments.
+   */
+  async createCommentAudioUploadUrl(
+    linkPublico: string,
+    dto: AudioUploadUrlDto,
+  ) {
+    await this.resolveVideo(linkPublico);
+    return this.storage.createPresignedUploadIn(
+      'comments-audio',
+      dto.nomeArquivo,
+      dto.contentType,
+    );
   }
 
   async addRating(linkPublico: string, dto: CreateRatingDto) {
