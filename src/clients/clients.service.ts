@@ -53,10 +53,52 @@ export class ClientsService {
     });
   }
 
+  /**
+   * Exclui o cliente e, em cascata (schema), seus projetos/videos/comentarios.
+   * A cascata do banco nao limpa os arquivos no R2, entao coletamos as URLs
+   * (foto do cliente, arquivos de video e audios de comentario) antes de
+   * apagar as linhas e removemos os objetos do storage depois.
+   */
   async remove(accountId: string, id: string) {
-    await this.findOne(accountId, id);
+    const client = await this.findOne(accountId, id);
+
+    const videos = await this.prisma.video.findMany({
+      where: { project: { clientId: id, accountId } },
+      select: {
+        urlStorage: true,
+        urlOtimizada: true,
+        thumbnailUrl: true,
+        comments: { select: { audioUrl: true } },
+      },
+    });
+
     await this.prisma.client.delete({ where: { id } });
+
+    const urls = [
+      client.fotoUrl,
+      ...videos.flatMap((v) => [
+        v.urlStorage,
+        v.urlOtimizada,
+        v.thumbnailUrl,
+        ...v.comments.map((c) => c.audioUrl),
+      ]),
+    ];
+    await this.deleteStorageObjects(urls);
+
     return { deleted: true };
+  }
+
+  private async deleteStorageObjects(
+    urls: Array<string | null | undefined>,
+  ): Promise<void> {
+    const keys = urls
+      .filter((url): url is string => !!url)
+      .map((url) => this.storage.keyFromPublicUrl(url))
+      .filter((key): key is string => !!key);
+
+    await Promise.all(
+      keys.map((key) => this.storage.deleteObject(key).catch(() => undefined)),
+    );
   }
 
   /**
