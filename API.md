@@ -285,13 +285,24 @@ continuam ligados a ela (histórico preservado).
 
 Body: `{ "urlStorage": "...", "nomeArquivo": "..." }`
 
-### `GET /videos?project_id=<uuid>`
+### `GET /videos?project_id=<uuid>&page=1&limit=50`
 Lista os vídeos de um projeto (mais recente primeiro por versão).
 Sem `project_id`, lista os vídeos de **todos os projetos da conta**
 autenticada (evita fan-out de uma request por projeto no dashboard).
 
-Resposta: array de `Video` + `videoPai: { id, versao, nomeArquivo } | null`
-+ `_count: { comments, ratings, versoes }`.
+**Paginado** (`page`/`limit` opcionais, default `page=1`/`limit=50`, `limit`
+com teto 100). Resposta:
+```json
+{
+  "data": [ { "...": "Video + videoPai: { id, versao, nomeArquivo } | null + _count: { comments, ratings, versoes }" } ],
+  "total": 137,
+  "page": 1,
+  "limit": 50,
+  "totalPages": 3
+}
+```
+> Antes retornava um array puro. Frontends existentes que esperam array
+> direto precisam trocar para ler `.data`.
 
 ### `PATCH /videos/:id/status`
 Body: `{ "status": "pendente" | "aprovado" | "ajuste" | "erro" }`

@@ -28,6 +28,7 @@ import { NewVersionDto } from './dto/new-version.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateDeadlineDto } from './dto/update-deadline.dto';
 import { UpdateEditorResponsavelDto } from './dto/update-editor-responsavel.dto';
+import { ListVideosQueryDto } from './dto/list-videos-query.dto';
 
 @ApiTags('videos')
 @ApiBearerAuth()
@@ -64,14 +65,18 @@ export class VideosController {
   @Get()
   @ApiOperation({
     summary:
-      'Lista videos. Com project_id, filtra por projeto; sem project_id, retorna os videos de todos os projetos da conta.',
+      'Lista videos, paginado (default page=1, limit=50, teto 100). Com project_id, filtra por projeto; sem project_id, retorna os videos de todos os projetos da conta.',
   })
   findByProject(
     @CurrentUser() user: AuthUser,
-    @Query('project_id', new ParseUUIDPipe({ version: '4', optional: true }))
-    projectId?: string,
+    @Query() query: ListVideosQueryDto,
   ) {
-    return this.videosService.findByProject(user.accountId, projectId);
+    return this.videosService.findByProject(
+      user.accountId,
+      query.project_id,
+      query.page,
+      query.limit,
+    );
   }
 
   @Patch(':id/status')

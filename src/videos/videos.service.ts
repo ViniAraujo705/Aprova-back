@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Plan, UserRole, VideoStatus } from '@prisma/client';
+import { Plan, Prisma, UserRole, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { createWithUniqueLinkPublico } from '../common/short-id.util';
 import { StorageService } from '../storage/storage.service';
@@ -117,21 +117,51 @@ export class VideosService {
   /**
    * Sem project_id, lista os videos de todos os projetos da conta (usado
    * pelo dashboard para evitar fan-out de uma request por projeto).
+   * Paginado: sem isso, contas com muitos videos acumulados carregavam a
+   * lista inteira numa unica query/payload.
    */
-  async findByProject(accountId: string, projectId?: string) {
+  async findByProject(
+    accountId: string,
+    projectId?: string,
+    page = 1,
+    limit = 50,
+  ) {
     if (projectId) {
       await this.assertProjectOwnership(accountId, projectId);
     }
-    return this.prisma.video.findMany({
-      where: projectId ? { projectId } : { project: { accountId } },
-      orderBy: { versao: 'desc' },
-      include: {
-        videoPai: {
-          select: { id: true, versao: true, nomeArquivo: true },
+    const where = projectId ? { projectId } : { project: { accountId } };
+    // orderBy versao/id garante paginacao deterministica (versao sozinha
+    // tem empates entre familias de video diferentes)
+    const orderBy: Prisma.VideoOrderByWithRelationInput[] = [
+      { versao: 'desc' },
+      { id: 'asc' },
+    ];
+
+    const [data, total] = await Promise.all([
+      this.prisma.video.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          videoPai: {
+            select: { id: true, versao: true, nomeArquivo: true },
+          },
+          _count: {
+            select: { comments: true, ratings: true, versoes: true },
+          },
         },
-        _count: { select: { comments: true, ratings: true, versoes: true } },
-      },
-    });
+      }),
+      this.prisma.video.count({ where }),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
   }
 
   async updateStatus(accountId: string, id: string, status: VideoStatus) {
