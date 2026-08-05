@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { NotificationType, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
+
+// Janela de antecedencia do lembrete de gravacao: evento entra na consulta
+// assim que faltar <= 24h pro inicio (ver sendRecordingReminders).
+const RECORDING_REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // Campos retornados em toda listagem de notificacao: contexto suficiente
 // para o frontend renderizar e linkar sem precisar de uma segunda chamada.
@@ -22,6 +27,14 @@ const NOTIFICATION_SELECT = {
           client: { select: { nome: true } },
         },
       },
+    },
+  },
+  recordingEvent: {
+    select: {
+      id: true,
+      titulo: true,
+      dataInicio: true,
+      cliente: { select: { nome: true } },
     },
   },
 } as const;
@@ -85,8 +98,8 @@ export class NotificationsService {
     }
   }
 
-  list(user: AuthUser, apenasNaoLidas?: boolean) {
-    return this.prisma.notification.findMany({
+  async list(user: AuthUser, apenasNaoLidas?: boolean) {
+    const notifications = await this.prisma.notification.findMany({
       where: {
         userId: user.id,
         accountId: user.accountId,
@@ -96,6 +109,19 @@ export class NotificationsService {
       take: 50,
       select: NOTIFICATION_SELECT,
     });
+    return notifications.map(({ recordingEvent, ...rest }) => ({
+      ...rest,
+      ...(recordingEvent
+        ? {
+            event: {
+              id: recordingEvent.id,
+              title: recordingEvent.titulo,
+              startAt: recordingEvent.dataInicio,
+              clientName: recordingEvent.cliente?.nome ?? null,
+            },
+          }
+        : {}),
+    }));
   }
 
   unreadCount(user: AuthUser) {
@@ -116,5 +142,57 @@ export class NotificationsService {
       where: { userId: user.id, accountId: user.accountId, lida: false },
       data: { lida: true },
     });
+  }
+
+  /**
+   * Cron: lembra o(s) owner(s) de uma gravacao (RecordingEvent) que comeca
+   * em ate 24h - nunca os editors (pedido explicito do frontend). So
+   * dispara uma vez por evento: a query ja exclui eventos que tenham uma
+   * notificacao lembrete_gravacao (relacao `notifications`), e o unique
+   * index (recording_event_id, user_id, type) + skipDuplicates cobrem a
+   * corrida entre replicas/execucoes concorrentes do cron.
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async sendRecordingReminders(): Promise<void> {
+    try {
+      const now = new Date();
+      const windowEnd = new Date(now.getTime() + RECORDING_REMINDER_WINDOW_MS);
+
+      const events = await this.prisma.recordingEvent.findMany({
+        where: {
+          dataInicio: { gt: now, lte: windowEnd },
+          notifications: { none: { type: NotificationType.lembrete_gravacao } },
+        },
+        select: { id: true, accountId: true },
+      });
+      if (events.length === 0) {
+        return;
+      }
+
+      for (const event of events) {
+        const owners = await this.prisma.user.findMany({
+          where: { accountId: event.accountId, role: UserRole.owner },
+          select: { id: true },
+        });
+        if (owners.length === 0) {
+          continue;
+        }
+
+        await this.prisma.notification.createMany({
+          data: owners.map((owner) => ({
+            accountId: event.accountId,
+            userId: owner.id,
+            recordingEventId: event.id,
+            type: NotificationType.lembrete_gravacao,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    } catch (err) {
+      this.logger.error(
+        'Falha ao enviar lembretes de gravacao',
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 }

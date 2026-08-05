@@ -785,10 +785,33 @@ token (nunca cruza contas ou usuários).
 }
 ```
 
+`Notification` do tipo `lembrete_gravacao` (ver abaixo) vem sem `video`, com
+`event` no lugar:
+```json
+{
+  "id": "uuid",
+  "type": "lembrete_gravacao",
+  "lida": false,
+  "criadoEm": "2026-08-06T10:00:00.000Z",
+  "event": {
+    "id": "uuid",
+    "title": "Gravação — Batom matte (novo lançamento)",
+    "startAt": "2026-08-06T12:00:00.000Z",
+    "clientName": "Bela Cosméticos ou null"
+  }
+}
+```
+
 - São criadas automaticamente (nunca via endpoint próprio) quando o
   **cliente** comenta, aprova, pede ajuste ou avalia um vídeo — ver as
   rotas [públicas](#acesso-público-do-cliente-sem-autenticação). Destinatários:
   todos os `owner` da conta + o `editorResponsavel` do vídeo (se houver).
+- `lembrete_gravacao`: gerada por um cron (`NotificationsService.sendRecordingReminders`,
+  a cada 10min) quando um [`RecordingEvent`](#calendário-de-gravações-recording-events)
+  está a até 24h do início (`dataInicio`). Destinatário: só o(s) `owner`(s)
+  da conta — nunca os `editor`. Disparada uma única vez por evento (índice
+  único `recording_event_id/user_id/type` + checagem de notificação
+  existente evitam duplicar a cada execução do cron).
 - `GET /notifications?naoLidas=true`: filtra só as não lidas. Sem o
   parâmetro (ou `naoLidas=false`), lista as 50 mais recentes independente
   do status de leitura.

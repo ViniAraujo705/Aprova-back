@@ -70,6 +70,9 @@ enum NotificationType {
   aprovacao_cliente
   ajuste_solicitado
   avaliacao_cliente
+  // Lembrete de gravacao proxima (RecordingEvent) - so pro owner, ver
+  // NotificationsService.sendRecordingReminders.
+  lembrete_gravacao
 }
 
 // Conta = agencia. Agrupa os usuarios (owner + editores) e todos os
@@ -193,9 +196,10 @@ model RecordingEvent {
   observacoes String?
   criadoEm    DateTime  @default(now()) @map("criado_em")
 
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  cliente Client?  @relation(fields: [clienteId], references: [id], onDelete: SetNull)
-  membro  User?    @relation(fields: [membroId], references: [id], onDelete: SetNull)
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cliente       Client?        @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  membro        User?          @relation(fields: [membroId], references: [id], onDelete: SetNull)
+  notifications Notification[]
 
   @@index([accountId])
   @@index([clienteId])
@@ -361,20 +365,25 @@ model RatingQuestion {
 }
 
 // Notificacao in-app para o owner/editor responsavel ficarem cientes de
-// acoes do cliente (comentario, aprovacao, ajuste, avaliacao) num video.
+// acoes do cliente (comentario, aprovacao, ajuste, avaliacao) num video, ou
+// para o owner ser lembrado de uma gravacao proxima (lembrete_gravacao,
+// videoId nulo/recordingEventId preenchido nesse caso).
 model Notification {
-  id        String           @id @default(uuid())
-  accountId String           @map("account_id")
-  userId    String           @map("user_id")
-  videoId   String           @map("video_id")
-  type      NotificationType
-  lida      Boolean          @default(false)
-  criadoEm  DateTime         @default(now()) @map("criado_em")
+  id               String           @id @default(uuid())
+  accountId        String           @map("account_id")
+  userId           String           @map("user_id")
+  videoId          String?          @map("video_id")
+  recordingEventId String?          @map("recording_event_id")
+  type             NotificationType
+  lida             Boolean          @default(false)
+  criadoEm         DateTime         @default(now()) @map("criado_em")
 
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  video   Video   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  account        Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video          Video?          @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  recordingEvent RecordingEvent? @relation(fields: [recordingEventId], references: [id], onDelete: Cascade)
 
+  @@unique([recordingEventId, userId, type])
   @@index([userId, lida])
   @@index([accountId])
   @@index([videoId])

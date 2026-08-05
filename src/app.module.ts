@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
@@ -28,6 +29,8 @@ import { RecordingEventsModule } from './recording-events/recording-events.modul
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Cron dos lembretes de gravacao (NotificationsService.sendRecordingReminders).
+    ScheduleModule.forRoot(),
     // Rate limiting global (protege login e rotas publicas contra abuso).
     // Limite elevado de 60 -> 120/min: navegacao normal do dashboard
     // (varios GETs autenticados em sequencia: videos, projetos, comentarios,
