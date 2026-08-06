@@ -27,6 +27,7 @@ import { CreateVideoDto } from './dto/create-video.dto';
 import { NewVersionDto } from './dto/new-version.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateDeadlineDto } from './dto/update-deadline.dto';
+import { UpdateTituloDto } from './dto/update-titulo.dto';
 import { UpdateEditorResponsavelDto } from './dto/update-editor-responsavel.dto';
 import { ListVideosQueryDto } from './dto/list-videos-query.dto';
 
@@ -100,6 +101,15 @@ export class VideosController {
     @Body() dto: UpdateDeadlineDto,
   ) {
     return this.videosService.updateDeadline(user.accountId, id, dto);
+  }
+
+  @Patch(':id/titulo')
+  updateTitulo(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateTituloDto,
+  ) {
+    return this.videosService.updateTitulo(user.accountId, id, dto);
   }
 
   @Patch(':id/editor-responsavel')

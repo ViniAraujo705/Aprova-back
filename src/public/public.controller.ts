@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -14,6 +15,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { ApproveVideoDto } from './dto/approve-video.dto';
 import { AudioUploadUrlDto } from './dto/audio-upload-url.dto';
+import { UpdateTituloDto } from './dto/update-titulo.dto';
 
 /**
  * Rotas de acesso do cliente - SEM autenticacao.
@@ -78,5 +80,14 @@ export class PublicController {
   @HttpCode(HttpStatus.OK)
   requestChanges(@Param('linkPublico') linkPublico: string) {
     return this.publicService.requestChanges(linkPublico);
+  }
+
+  @Patch(':linkPublico/titulo')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  updateTitulo(
+    @Param('linkPublico') linkPublico: string,
+    @Body() dto: UpdateTituloDto,
+  ) {
+    return this.publicService.updateTitulo(linkPublico, dto);
   }
 }

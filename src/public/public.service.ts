@@ -17,6 +17,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { ApproveVideoDto } from './dto/approve-video.dto';
 import { AudioUploadUrlDto } from './dto/audio-upload-url.dto';
+import { UpdateTituloDto } from './dto/update-titulo.dto';
 
 @Injectable()
 export class PublicService {
@@ -304,6 +305,21 @@ export class PublicService {
       NotificationType.ajuste_solicitado,
     );
     return updated;
+  }
+
+  async updateTitulo(linkPublico: string, dto: UpdateTituloDto) {
+    const video = await this.resolveVideo(linkPublico);
+    return this.prisma.video.update({
+      where: { id: video.id },
+      data: { nomeArquivo: dto.nomeArquivo },
+      select: {
+        id: true,
+        nomeArquivo: true,
+        status: true,
+        aprovadoEm: true,
+        notaGeral: true,
+      },
+    });
   }
 
   private async setStatus(

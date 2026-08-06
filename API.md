@@ -309,6 +309,12 @@ com teto 100). Resposta:
 Body: `{ "status": "pendente" | "aprovado" | "ajuste" | "erro" }`
 Ao marcar `aprovado`, o backend carimba `aprovadoEm`.
 
+### `PATCH /videos/:id/titulo`
+`owner`+`editor` (mesmo padrão de `PATCH /videos/:id/status`). Renomeia o
+vídeo.
+
+Body: `{ "nomeArquivo": "novo-nome.mp4" }`
+
 ### `PATCH /videos/:id/deadline`
 **Somente `owner`.** Define ou remove o prazo de entrega.
 
@@ -1088,6 +1094,12 @@ do editor responsável por este vídeo. Pode aprovar sem enviar nada
 
 ### `POST /public/videos/:linkPublico/request-changes`
 Rate limit: **10/min**. Sem body. Marca `status = ajuste`.
+
+### `PATCH /public/videos/:linkPublico/titulo`
+Rate limit: **10/min**. Sem autenticação — o cliente renomeia o vídeo pela
+tela pública dele.
+
+Body: `{ "nomeArquivo": "novo-nome.mp4" }`
 
 ---
 

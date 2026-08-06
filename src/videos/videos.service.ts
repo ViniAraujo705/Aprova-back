@@ -20,6 +20,7 @@ import { UploadUrlDto } from './dto/upload-url.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { NewVersionDto } from './dto/new-version.dto';
 import { UpdateDeadlineDto } from './dto/update-deadline.dto';
+import { UpdateTituloDto } from './dto/update-titulo.dto';
 
 const DEFAULT_MAX_VIDEO_SIZE_MB = 2048; // 2 GB
 
@@ -185,6 +186,14 @@ export class VideosService {
     return this.prisma.video.update({
       where: { id },
       data: { deadline: dto.deadline ? new Date(dto.deadline) : null },
+    });
+  }
+
+  async updateTitulo(accountId: string, id: string, dto: UpdateTituloDto) {
+    await this.getOwnedVideo(accountId, id);
+    return this.prisma.video.update({
+      where: { id },
+      data: { nomeArquivo: dto.nomeArquivo },
     });
   }
 
