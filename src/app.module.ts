@@ -25,6 +25,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PlansModule } from './plans/plans.module';
 import { BillingModule } from './billing/billing.module';
 import { RecordingEventsModule } from './recording-events/recording-events.module';
+import { CrewModule } from './crew/crew.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { RecordingEventsModule } from './recording-events/recording-events.modul
     PlansModule,
     BillingModule,
     RecordingEventsModule,
+    CrewModule,
   ],
   providers: [
     {

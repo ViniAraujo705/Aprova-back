@@ -17,6 +17,7 @@ const RECORDING_EVENT_SELECT = {
   observacoes: true,
   cliente: { select: { nome: true } },
   membro: { select: { nome: true } },
+  equipe: { select: { crewMember: { select: { id: true, nome: true } } } },
 } as const;
 
 type RawRecordingEvent = {
@@ -29,15 +30,21 @@ type RawRecordingEvent = {
   observacoes: string | null;
   cliente: { nome: string } | null;
   membro: { nome: string } | null;
+  equipe: { crewMember: { id: string; nome: string } }[];
 };
 
 function toDto(event: RawRecordingEvent) {
-  const { cliente, membro, ...rest } = event;
+  const { cliente, membro, equipe, ...rest } = event;
   return {
     ...rest,
     clienteNome: cliente?.nome ?? null,
     membroNome: membro?.nome ?? null,
+    equipe: equipe.map((e) => e.crewMember),
   };
+}
+
+function dedupe(ids: string[]): string[] {
+  return Array.from(new Set(ids));
 }
 
 @Injectable()
@@ -46,6 +53,7 @@ export class RecordingEventsService {
 
   async create(accountId: string, dto: CreateRecordingEventDto) {
     await this.assertRefsBelongToAccount(accountId, dto);
+    const equipeIds = dto.equipeIds ? dedupe(dto.equipeIds) : [];
 
     const event = await this.prisma.recordingEvent.create({
       data: {
@@ -56,6 +64,13 @@ export class RecordingEventsService {
         clienteId: dto.clienteId ?? null,
         membroId: dto.membroId ?? null,
         observacoes: dto.observacoes ?? null,
+        ...(equipeIds.length
+          ? {
+              equipe: {
+                create: equipeIds.map((crewMemberId) => ({ crewMemberId })),
+              },
+            }
+          : {}),
       },
       select: RECORDING_EVENT_SELECT,
     });
@@ -86,24 +101,44 @@ export class RecordingEventsService {
     // Garante que o evento pertence a conta antes de atualizar
     await this.findOne(accountId, id);
     await this.assertRefsBelongToAccount(accountId, dto);
+    const equipeIds =
+      dto.equipeIds !== undefined ? dedupe(dto.equipeIds) : undefined;
 
-    const event = await this.prisma.recordingEvent.update({
-      where: { id },
-      data: {
-        ...(dto.titulo !== undefined ? { titulo: dto.titulo } : {}),
-        ...(dto.dataInicio !== undefined
-          ? { dataInicio: new Date(dto.dataInicio) }
-          : {}),
-        ...(dto.dataFim !== undefined
-          ? { dataFim: dto.dataFim ? new Date(dto.dataFim) : null }
-          : {}),
-        ...(dto.clienteId !== undefined ? { clienteId: dto.clienteId } : {}),
-        ...(dto.membroId !== undefined ? { membroId: dto.membroId } : {}),
-        ...(dto.observacoes !== undefined
-          ? { observacoes: dto.observacoes }
-          : {}),
-      },
-      select: RECORDING_EVENT_SELECT,
+    // equipeIds substitui a escala inteira (nao faz merge) — apaga as
+    // linhas antigas de RecordingEventCrew antes de recriar, na mesma
+    // transacao do update pra nao deixar o evento sem equipe se o segundo
+    // passo falhar.
+    const event = await this.prisma.$transaction(async (tx) => {
+      if (equipeIds !== undefined) {
+        await tx.recordingEventCrew.deleteMany({
+          where: { recordingEventId: id },
+        });
+      }
+      return tx.recordingEvent.update({
+        where: { id },
+        data: {
+          ...(dto.titulo !== undefined ? { titulo: dto.titulo } : {}),
+          ...(dto.dataInicio !== undefined
+            ? { dataInicio: new Date(dto.dataInicio) }
+            : {}),
+          ...(dto.dataFim !== undefined
+            ? { dataFim: dto.dataFim ? new Date(dto.dataFim) : null }
+            : {}),
+          ...(dto.clienteId !== undefined ? { clienteId: dto.clienteId } : {}),
+          ...(dto.membroId !== undefined ? { membroId: dto.membroId } : {}),
+          ...(dto.observacoes !== undefined
+            ? { observacoes: dto.observacoes }
+            : {}),
+          ...(equipeIds !== undefined && equipeIds.length
+            ? {
+                equipe: {
+                  create: equipeIds.map((crewMemberId) => ({ crewMemberId })),
+                },
+              }
+            : {}),
+        },
+        select: RECORDING_EVENT_SELECT,
+      });
     });
     return toDto(event);
   }
@@ -115,13 +150,13 @@ export class RecordingEventsService {
   }
 
   /**
-   * clienteId/membroId sao opcionais, mas quando enviados precisam
-   * pertencer a mesma conta do usuario autenticado (evita vazar/associar
-   * dados de outra agencia).
+   * clienteId/membroId/equipeIds sao opcionais, mas quando enviados
+   * precisam pertencer a mesma conta do usuario autenticado (evita
+   * vazar/associar dados de outra agencia).
    */
   private async assertRefsBelongToAccount(
     accountId: string,
-    dto: Pick<CreateRecordingEventDto, 'clienteId' | 'membroId'>,
+    dto: Pick<CreateRecordingEventDto, 'clienteId' | 'membroId' | 'equipeIds'>,
   ): Promise<void> {
     if (dto.clienteId) {
       const cliente = await this.prisma.client.findFirst({
@@ -139,6 +174,15 @@ export class RecordingEventsService {
       });
       if (!membro) {
         throw new BadRequestException('membroId invalido');
+      }
+    }
+    if (dto.equipeIds?.length) {
+      const equipeIds = dedupe(dto.equipeIds);
+      const count = await this.prisma.crewMember.count({
+        where: { id: { in: equipeIds }, accountId },
+      });
+      if (count !== equipeIds.length) {
+        throw new BadRequestException('equipeIds invalido');
       }
     }
   }

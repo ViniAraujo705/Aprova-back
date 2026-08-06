@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsDateString,
   IsNotEmpty,
   IsOptional,
@@ -25,6 +26,11 @@ export class CreateRecordingEventDto {
   @IsOptional()
   @IsUUID('4', { message: 'membroId invalido' })
   membroId?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true, message: 'equipeIds invalido' })
+  equipeIds?: string[];
 
   @IsOptional()
   @IsString()

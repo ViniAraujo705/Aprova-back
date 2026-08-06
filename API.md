@@ -22,6 +22,7 @@ enviar e o que esperar de volta. Revisado a partir do código-fonte em
 - [Pagamento](#pagamento-billing)
 - [Notificações](#notificações-notifications)
 - [Calendário de gravações](#calendário-de-gravações-recording-events)
+- [Equipe de gravação](#equipe-de-gravação-crew)
 - [Dashboard](#dashboard)
 - [Relatório do projeto (PDF)](#relatório-do-projeto-pdf)
 - [Acesso público do cliente (sem autenticação)](#acesso-público-do-cliente-sem-autenticação)
@@ -833,15 +834,21 @@ Autenticado — roles `owner`, `editor`. Escopado à `accountId` do token.
 
 | Método | Rota | Body | Retorno |
 |---|---|---|---|
-| `POST` | `/recording-events` | `{ titulo, dataInicio, dataFim?, clienteId?, membroId?, observacoes? }` | `RecordingEvent` criado |
+| `POST` | `/recording-events` | `{ titulo, dataInicio, dataFim?, clienteId?, membroId?, equipeIds?, observacoes? }` | `RecordingEvent` criado |
 | `GET` | `/recording-events` | — | `RecordingEvent[]` (ordenado por `dataInicio` asc) |
 | `GET` | `/recording-events/:id` | — | `RecordingEvent` |
 | `PATCH` | `/recording-events/:id` | mesmos campos do `POST`, todos opcionais | `RecordingEvent` atualizado |
 | `DELETE` | `/recording-events/:id` | — | `{ "deleted": true }` |
 
 `titulo` e `dataInicio` (ISO 8601) são obrigatórios no `POST`. `dataFim`,
-`clienteId`, `membroId` e `observacoes` são opcionais/nuláveis — a gravação
-pode ser lançada antes de definir cliente ou responsável.
+`clienteId`, `membroId`, `equipeIds` e `observacoes` são opcionais/nuláveis
+— a gravação pode ser lançada antes de definir cliente ou responsável.
+
+`equipeIds` é um array de UUIDs de [`CrewMember`](#equipe-de-gravação-crew)
+da mesma conta (pessoas da equipe escaladas pra essa gravação — freelancers,
+motorista etc, não usuários do sistema). No `PATCH`, enviar `equipeIds`
+**substitui a escala inteira** (não faz merge com a lista anterior); mandar
+`equipeIds: []` limpa a escala. Omitir o campo mantém a escala atual.
 
 `RecordingEvent`:
 ```json
@@ -853,15 +860,40 @@ pode ser lançada antes de definir cliente ou responsável.
   "clienteId": "uuid ou null",
   "membroId": "uuid ou null",
   "observacoes": "Levar tripé extra",
-  "clienteNome": "Cliente A" ,
-  "membroNome": "João Editor"
+  "clienteNome": "Cliente A",
+  "membroNome": "João Editor",
+  "equipe": [{ "id": "uuid", "nome": "Maria Freelancer" }]
 }
 ```
 `clienteNome`/`membroNome` vêm nulos se `clienteId`/`membroId` forem nulos.
+`equipe` vem como array vazio (nunca nulo) quando não há ninguém escalado.
 
 Erros: `400` se `clienteId` não corresponder a um `Client` da mesma conta,
-ou `membroId` a um `User` (owner/editor) da mesma conta · `404` se `:id` do
-evento não existir ou não pertencer à conta.
+`membroId` a um `User` (owner/editor) da mesma conta, ou algum item de
+`equipeIds` a um `CrewMember` da mesma conta · `404` se `:id` do evento não
+existir ou não pertencer à conta.
+
+---
+
+## Equipe de gravação (`/crew`)
+Autenticado — roles `owner`, `editor`. Escopado à `accountId` do token.
+Roster de pessoas que participam de gravações mas não são usuários do
+sistema (freelancers, motorista etc) — só um cadastro de nome, usado pra
+escalar em [`RecordingEvent.equipeIds`](#calendário-de-gravações-recording-events).
+
+| Método | Rota | Body | Retorno |
+|---|---|---|---|
+| `POST` | `/crew` | `{ nome }` | `CrewMember` criado |
+| `GET` | `/crew` | — | `CrewMember[]` da conta (ordenado por `nome` asc) |
+
+`CrewMember`:
+```json
+{
+  "id": "uuid",
+  "nome": "Maria Freelancer",
+  "accountId": "uuid"
+}
+```
 
 ---
 

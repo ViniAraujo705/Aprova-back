@@ -93,6 +93,7 @@ model Account {
   ratingQuestions RatingQuestion[]
   notifications   Notification[]
   recordingEvents RecordingEvent[]
+  crewMembers     CrewMember[]
 
   @@map("accounts")
 }
@@ -200,11 +201,43 @@ model RecordingEvent {
   cliente       Client?        @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   membro        User?          @relation(fields: [membroId], references: [id], onDelete: SetNull)
   notifications Notification[]
+  equipe        RecordingEventCrew[]
 
   @@index([accountId])
   @@index([clienteId])
   @@index([membroId])
   @@map("recording_events")
+}
+
+// Pessoa da equipe de gravacao (freelancer, motorista etc.) — nao e um
+// User do sistema, so um nome cadastrado pela agencia pra escalar em
+// RecordingEvent (ver RecordingEventCrew).
+model CrewMember {
+  id        String   @id @default(uuid())
+  accountId String   @map("account_id")
+  nome      String
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  account         Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  recordingEvents RecordingEventCrew[]
+
+  @@index([accountId])
+  @@map("crew_members")
+}
+
+// Escala N:N entre RecordingEvent e CrewMember (quem participa de cada
+// gravacao).
+model RecordingEventCrew {
+  id               String @id @default(uuid())
+  recordingEventId String @map("recording_event_id")
+  crewMemberId     String @map("crew_member_id")
+
+  recordingEvent RecordingEvent @relation(fields: [recordingEventId], references: [id], onDelete: Cascade)
+  crewMember     CrewMember     @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([recordingEventId, crewMemberId])
+  @@index([crewMemberId])
+  @@map("recording_event_crew")
 }
 
 model Client {
