@@ -21,8 +21,11 @@ import {
  * 3. gera uma versão otimizada para streaming web;
  * 4. sobe ambos no R2 e atualiza o vídeo (status_processamento = pronto).
  *
- * Em caso de falha, marca status_processamento = erro. O original em
- * url_storage permanece sempre disponível.
+ * Processa tanto `Video` (vinculado a projeto) quanto `PortfolioVideo`
+ * (vitrine da agência, upload dedicado sem projeto) - mesma fila/worker,
+ * só muda a tabela lida/gravada (`job.data.kind`). Em caso de falha, marca
+ * status_processamento = erro. O original em url_storage permanece sempre
+ * disponível.
  */
 // Numero de videos processados (download + ffmpeg + upload) em paralelo
 // por instancia. ffmpeg roda como child process (nao bloqueia o event
@@ -47,23 +50,40 @@ export class VideoProcessingProcessor extends WorkerHost {
   }
 
   async process(job: Job<ProcessVideoJobData>): Promise<void> {
-    const { videoId } = job.data;
+    const { kind, id } = job.data;
 
-    const video = await this.prisma.video.findUnique({
-      where: { id: videoId },
-      select: { id: true, urlStorage: true, nomeArquivo: true },
-    });
-    if (!video) {
-      this.logger.warn(`Vídeo ${videoId} não encontrado; job ignorado.`);
-      return;
+    let urlStorage: string;
+    let nome: string;
+    if (kind === 'video') {
+      const video = await this.prisma.video.findUnique({
+        where: { id },
+        select: { urlStorage: true, nomeArquivo: true },
+      });
+      if (!video) {
+        this.logger.warn(`${kind} ${id} não encontrado; job ignorado.`);
+        return;
+      }
+      urlStorage = video.urlStorage;
+      nome = video.nomeArquivo;
+    } else {
+      const portfolioVideo = await this.prisma.portfolioVideo.findUnique({
+        where: { id },
+        select: { urlStorage: true, titulo: true },
+      });
+      if (!portfolioVideo) {
+        this.logger.warn(`${kind} ${id} não encontrado; job ignorado.`);
+        return;
+      }
+      urlStorage = portfolioVideo.urlStorage;
+      nome = portfolioVideo.titulo;
     }
 
-    const sourceKey = this.storage.keyFromPublicUrl(video.urlStorage);
+    const sourceKey = this.storage.keyFromPublicUrl(urlStorage);
     if (!sourceKey) {
       this.logger.error(
-        `Não foi possível derivar a key do R2 a partir de ${video.urlStorage}`,
+        `Não foi possível derivar a key do R2 a partir de ${urlStorage}`,
       );
-      await this.markErro(videoId);
+      await this.markErro(kind, id);
       return;
     }
 
@@ -79,35 +99,50 @@ export class VideoProcessingProcessor extends WorkerHost {
       await this.media.generateThumbnail(inputPath, thumbPath);
       await this.media.optimizeForWeb(inputPath, optimizedPath);
 
-      const baseName = video.nomeArquivo.replace(/\.[^.]+$/, '');
+      const prefix = kind === 'video' ? 'thumbnails' : 'portfolio-thumbnails';
+      const optimizedPrefix =
+        kind === 'video' ? 'optimized' : 'portfolio-optimized';
+      const baseName = nome.replace(/\.[^.]+$/, '');
       const [thumbnailUrl, urlOtimizada] = await Promise.all([
         this.storage.uploadFile(
-          `thumbnails/${videoId}-${baseName}.jpg`,
+          `${prefix}/${id}-${baseName}.jpg`,
           thumbPath,
           'image/jpeg',
         ),
         this.storage.uploadFile(
-          `optimized/${videoId}-${baseName}.mp4`,
+          `${optimizedPrefix}/${id}-${baseName}.mp4`,
           optimizedPath,
           'video/mp4',
         ),
       ]);
 
-      await this.prisma.video.update({
-        where: { id: videoId },
-        data: {
-          thumbnailUrl,
-          urlOtimizada,
-          duracaoSegundos,
-          statusProcessamento: ProcessamentoStatus.pronto,
-        },
-      });
-      this.logger.log(`Vídeo ${videoId} processado com sucesso.`);
+      if (kind === 'video') {
+        await this.prisma.video.update({
+          where: { id },
+          data: {
+            thumbnailUrl,
+            urlOtimizada,
+            duracaoSegundos,
+            statusProcessamento: ProcessamentoStatus.pronto,
+          },
+        });
+      } else {
+        await this.prisma.portfolioVideo.update({
+          where: { id },
+          data: {
+            posterUrl: thumbnailUrl,
+            urlOtimizada,
+            duracaoSegundos,
+            statusProcessamento: ProcessamentoStatus.pronto,
+          },
+        });
+      }
+      this.logger.log(`${kind} ${id} processado com sucesso.`);
     } catch (err) {
       this.logger.error(
-        `Falha ao processar vídeo ${videoId}: ${(err as Error).message}`,
+        `Falha ao processar ${kind} ${id}: ${(err as Error).message}`,
       );
-      await this.markErro(videoId);
+      await this.markErro(kind, id);
       throw err; // permite o retry configurado na fila
     } finally {
       await rm(workDir, { recursive: true, force: true }).catch(
@@ -116,12 +151,24 @@ export class VideoProcessingProcessor extends WorkerHost {
     }
   }
 
-  private async markErro(videoId: string): Promise<void> {
-    await this.prisma.video
-      .update({
-        where: { id: videoId },
-        data: { statusProcessamento: ProcessamentoStatus.erro },
-      })
-      .catch(() => undefined);
+  private async markErro(
+    kind: ProcessVideoJobData['kind'],
+    id: string,
+  ): Promise<void> {
+    if (kind === 'video') {
+      await this.prisma.video
+        .update({
+          where: { id },
+          data: { statusProcessamento: ProcessamentoStatus.erro },
+        })
+        .catch(() => undefined);
+    } else {
+      await this.prisma.portfolioVideo
+        .update({
+          where: { id },
+          data: { statusProcessamento: ProcessamentoStatus.erro },
+        })
+        .catch(() => undefined);
+    }
   }
 }

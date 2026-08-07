@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
 import { ProjectsModule } from './projects/projects.module';
 import { VideosModule } from './videos/videos.module';
+import { PortfoliosModule } from './portfolios/portfolios.module';
 import { PublicModule } from './public/public.module';
 import { AdminModule } from './admin/admin.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -65,6 +66,7 @@ import { CrewModule } from './crew/crew.module';
     ClientsModule,
     ProjectsModule,
     VideosModule,
+    PortfoliosModule,
     PublicModule,
     AdminModule,
     DashboardModule,

@@ -91,6 +91,70 @@ export class PublicService {
   }
 
   /**
+   * Vitrine publica da agencia (Portfolio) - distinta da galeria de
+   * projeto acima: colecao curada manualmente, sem status de aprovacao.
+   * Nenhum dado de cliente/projeto e exposto, so o portfolio em si (os
+   * itens ja vem denormalizados - ver PortfoliosService.addExistingVideo).
+   */
+  async getPortfolio(linkPublico: string) {
+    const portfolio = await this.prisma.portfolio.findUnique({
+      where: { linkPublico },
+      select: {
+        nome: true,
+        descricao: true,
+        account: {
+          select: {
+            nomeAgencia: true,
+            users: {
+              where: { role: UserRole.owner },
+              select: { logoUrl: true, corDestaque: true },
+              orderBy: { criadoEm: 'asc' },
+              take: 1,
+            },
+          },
+        },
+        videos: {
+          orderBy: { ordem: 'asc' },
+          select: {
+            id: true,
+            titulo: true,
+            descricao: true,
+            urlStorage: true,
+            urlOtimizada: true,
+            posterUrl: true,
+            statusProcessamento: true,
+            ordem: true,
+            criadoEm: true,
+          },
+        },
+      },
+    });
+    if (!portfolio) {
+      throw new NotFoundException('Portfolio nao encontrado');
+    }
+
+    return {
+      nome: portfolio.nome,
+      descricao: portfolio.descricao,
+      agencia: {
+        nome: portfolio.account.nomeAgencia,
+        logoUrl: portfolio.account.users[0]?.logoUrl ?? null,
+        corDestaque: portfolio.account.users[0]?.corDestaque ?? null,
+      },
+      videos: portfolio.videos.map((v) => ({
+        id: v.id,
+        titulo: v.titulo,
+        descricao: v.descricao,
+        urlStorage: v.urlOtimizada ?? v.urlStorage,
+        posterUrl: v.posterUrl,
+        statusProcessamento: v.statusProcessamento,
+        ordem: v.ordem,
+        criadoEm: v.criadoEm,
+      })),
+    };
+  }
+
+  /**
    * Retorna apenas os dados do video referenciado pelo link_publico,
    * seus comentarios e ratings. Nenhum dado de outros videos, projetos
    * ou do profissional e exposto.

@@ -94,6 +94,7 @@ model Account {
   notifications   Notification[]
   recordingEvents RecordingEvent[]
   crewMembers     CrewMember[]
+  portfolios      Portfolio[]
 
   @@map("accounts")
 }
@@ -341,11 +342,62 @@ model Video {
   ratings           Rating[]
   editorResponsavel User?          @relation(fields: [editorResponsavelId], references: [id], onDelete: SetNull)
   notifications     Notification[]
+  portfolioVideos   PortfolioVideo[]
 
   @@index([projectId])
   @@index([videoPaiId])
   @@index([editorResponsavelId])
   @@map("videos")
+}
+
+// Vitrine da agencia: colecao curada manualmente pelo owner, distinta da
+// galeria de projeto (Project.linkPublico) - nao espelha uma entrega, nao
+// tem status de aprovacao, link publico proprio pra atrair novos clientes
+// (ver PortfoliosService/PublicService.getPortfolio).
+model Portfolio {
+  id           String   @id @default(uuid())
+  accountId    String   @map("account_id")
+  nome         String
+  descricao    String?
+  linkPublico  String   @unique @default(uuid()) @map("link_publico")
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  account Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  videos  PortfolioVideo[]
+
+  @@index([accountId])
+  @@map("portfolios")
+}
+
+// Item de um Portfolio. Sempre denormalizado (urlStorage/posterUrl/etc sao
+// uma copia, tirada no momento em que o video entra no portfolio) - a rota
+// publica nunca resolve o Video/projeto/cliente original por tras. Dois
+// jeitos de entrar: referenciando um Video existente (sourceVideoId
+// preenchido) ou upload dedicado direto pro portfolio (sourceVideoId nulo).
+// sourceVideoId so existe pra decidir se e seguro apagar os arquivos do R2
+// ao remover o item (ver PortfoliosService.removeVideo) - nunca exposto na
+// API, e onDelete SetNull pra nao travar a exclusao do Video original.
+model PortfolioVideo {
+  id                  String              @id @default(uuid())
+  portfolioId         String              @map("portfolio_id")
+  sourceVideoId       String?             @map("source_video_id")
+  titulo              String
+  descricao           String?
+  urlStorage          String              @map("url_storage")
+  urlOtimizada        String?             @map("url_otimizada")
+  posterUrl           String?             @map("poster_url")
+  statusProcessamento ProcessamentoStatus @default(processando) @map("status_processamento")
+  duracaoSegundos     Int?                @map("duracao_segundos")
+  ordem               Int                 @default(0)
+  criadoEm            DateTime            @default(now()) @map("criado_em")
+
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  sourceVideo Video?    @relation(fields: [sourceVideoId], references: [id], onDelete: SetNull)
+
+  @@index([portfolioId])
+  @@index([sourceVideoId])
+  @@map("portfolio_videos")
 }
 
 model Comment {

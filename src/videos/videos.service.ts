@@ -77,6 +77,7 @@ export class VideosService {
 
     // Dispara thumbnail + versão otimizada em background (não bloqueia a resposta)
     await this.processing.enqueue(
+      'video',
       video.id,
       await this.processingPriority(accountId),
     );
@@ -108,6 +109,7 @@ export class VideosService {
     );
 
     await this.processing.enqueue(
+      'video',
       video.id,
       await this.processingPriority(accountId),
     );

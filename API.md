@@ -12,6 +12,7 @@ enviar e o que esperar de volta. Revisado a partir do código-fonte em
 - [Clientes](#clientes-clients)
 - [Projetos](#projetos-projects)
 - [Vídeos](#vídeos-videos)
+- [Portfólios](#portfólios-portfolios)
 - [Comentários (canais autenticados)](#comentários-canais-autenticados)
 - [Perguntas de avaliação](#perguntas-de-avaliação-rating-questions)
 - [Desempenho da equipe](#desempenho-da-equipe-team)
@@ -403,6 +404,96 @@ não deve ser assumido pelo frontend (ver nota na seção de acesso público).
 `notaGeral` (1–5) só é
 preenchida quando o cliente aprova informando uma nota geral (ver
 [`POST /public/videos/:linkPublico/approve`](#post-public-videoslinkpublicoapprove)).
+
+---
+
+## Portfólios (`/portfolios`)
+Autenticado — **somente `owner`** (mesma regra de branding/equipe/planos).
+
+Vitrine da agência, distinta da galeria de projeto
+([Galeria pública do projeto](#galeria-pública-do-projeto)): uma coleção de
+vídeos escolhida manualmente pelo owner (não espelha uma entrega inteira),
+sem `status` de aprovação, com link público próprio para atrair novos
+clientes (`/p/:linkPublico` no frontend). Um vídeo entra de duas formas: (1)
+referenciando um vídeo já existente em algum projeto, ou (2) upload dedicado
+direto pro portfólio, sem vínculo com projeto/cliente.
+
+| Método | Rota | Body | Retorno |
+|---|---|---|---|
+| `GET` | `/portfolios` | — | `Portfolio[]` (sem `videos[]`, só resumo — ver abaixo) |
+| `GET` | `/portfolios/:id` | — | `Portfolio` completo, com `videos[]` |
+| `POST` | `/portfolios` | `{ nome, descricao? }` | `Portfolio` criado (`linkPublico` gerado pelo backend) |
+| `PATCH` | `/portfolios/:id` | `{ nome?, descricao? }` | `Portfolio` atualizado |
+| `DELETE` | `/portfolios/:id` | — | `{ "deleted": true }` |
+
+`Portfolio`: `{ id, nome, descricao, linkPublico, capaUrl, videos: PortfolioVideo[], criadoEm, atualizadoEm }`.
+`capaUrl` pode ser `null` — é o `posterUrl` do primeiro vídeo (por `ordem`),
+`null` se o portfólio ainda não tem vídeo com poster gerado.
+
+`PortfolioVideo`: `{ id, titulo, descricao, urlStorage (ou urlOtimizada, o
+que estiver pronto para tocar), posterUrl, statusProcessamento, ordem,
+criadoEm }`. Sem `status` de aprovação — não faz sentido fora do fluxo
+cliente↔projeto.
+
+### `POST /portfolios/:id/videos`
+Adiciona ao portfólio um vídeo **já existente** em algum projeto da conta
+(`404` se `videoId` não existir ou não pertencer à conta).
+
+Body: `{ "videoId": "uuid", "titulo"?: "...", "descricao"?: "..." }`
+`titulo`/`descricao` são opcionais — se omitidos, usa o `nomeArquivo` do
+vídeo original como `titulo`.
+
+O backend **copia** `urlStorage`/`urlOtimizada`/`posterUrl`/
+`statusProcessamento`/`duracaoSegundos` do vídeo original pro item do
+portfólio nesse momento (denormalizado, sem sincronização depois) — a rota
+pública (`GET /public/portfolios/:linkPublico`) não resolve o
+`Video`/projeto/cliente original por trás. Remover o item do portfólio
+depois nunca afeta o vídeo original (ver `DELETE .../videos/:videoId`).
+
+Resposta: o `Portfolio` completo atualizado (mesmo shape de `GET /portfolios/:id`).
+
+### `POST /portfolios/:id/upload-url`
+Presigned URL pro upload direto no R2, mesmo contrato de
+`POST /videos/upload-url` (ver seção Vídeos) — só muda o path (pasta
+`portfolio/` no bucket em vez de `videos/`).
+
+Body: `{ "nomeArquivo": "video.mp4", "contentType": "video/mp4" }`
+
+Resposta `200`: `{ "uploadUrl": "...", "key": "...", "publicUrl": "...", "expiresIn": 600 }`
+
+### `POST /portfolios/:id/videos/upload-complete`
+Registra, direto no portfólio, um vídeo enviado pelo passo acima — **sem**
+projeto/cliente por trás (diferente de `POST /videos`). Dispara em
+background a geração de poster + versão otimizada, mesmo pipeline usado
+pelos vídeos de projeto (`statusProcessamento` começa em `processando`).
+
+Body: `{ "urlStorage": "<publicUrl do passo anterior>", "nomeArquivo": "video.mp4", "titulo"?: "...", "descricao"?: "..." }`
+`titulo` opcional — se omitido, usa `nomeArquivo`.
+
+Resposta: o `Portfolio` completo atualizado.
+
+### `PATCH /portfolios/:id/videos/:videoId`
+Edita título/descrição de um vídeo já no portfólio.
+
+Body: `{ "titulo"?: "...", "descricao"?: "..." }`
+
+Resposta: o `Portfolio` completo atualizado.
+
+### `DELETE /portfolios/:id/videos/:videoId`
+Remove um vídeo do portfólio (não afeta o vídeo original, se veio de um
+projeto — só apaga os arquivos do R2 quando o item foi upload dedicado).
+Resposta: o `Portfolio` completo atualizado.
+
+### `PATCH /portfolios/:id/videos/order`
+Reordena os vídeos do portfólio (usado pelos botões subir/descer na UI).
+
+Body: `{ "videoIds": ["uuid1", "uuid2", "..."] }` — a nova ordem completa,
+na sequência desejada (precisa conter exatamente os vídeos atuais do
+portfólio, senão `400`). Resposta: o `Portfolio` completo atualizado, com
+`ordem` de cada item recalculada a partir da posição no array.
+
+Erros comuns em todas as rotas de `/portfolios`: `404` (portfólio/vídeo não
+existe ou não pertence à conta do token), `403` (usuário não é `owner`).
 
 ---
 
@@ -1023,6 +1114,40 @@ tem `videoPaiId` apontando pra outro `id` desta mesma lista, ele foi
 substituído por uma versão mais nova (`POST /videos/:id/new-version`) — o
 front usa isso pra esconder a versão antiga da galeria. `404` se
 `:linkPublico` não corresponder a nenhum projeto.
+
+### Portfólio público
+
+### `GET /public/portfolios/:linkPublico`
+Sem rate limit específico (usa o global de 120/min). Vitrine da agência (ver
+[Portfólios](#portfólios-portfolios)) — **nenhum** dado de cliente/projeto/
+status é exposto aqui, só o portfólio em si. `404` se `:linkPublico` não
+corresponder a nenhum portfólio.
+
+Resposta:
+```json
+{
+  "nome": "Reels para redes sociais",
+  "descricao": "Seleção de reels de curta duração... ou null",
+  "agencia": { "nome": "Agencia Teste", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
+  "videos": [
+    {
+      "id": "uuid",
+      "titulo": "Reel lançamento batom matte",
+      "descricao": "... ou null",
+      "urlStorage": "https://...",
+      "posterUrl": "https://... ou null",
+      "statusProcessamento": "processando" | "pronto" | "erro",
+      "ordem": 0,
+      "criadoEm": "..."
+    }
+  ]
+}
+```
+`videos` vem ordenado por `ordem` crescente. `urlStorage` já resolve para a
+versão otimizada quando pronta (mesma regra de `PortfolioVideo` na seção
+autenticada). O frontend abre cada vídeo num player simples (lightbox com
+`<video>` nativo), sem navegar para `/v/:linkPublico` — a tela de aprovação
+do cliente não faz sentido aqui.
 
 ### `GET /public/videos/:linkPublico`
 Sem rate limit específico (usa o global de 60/min).

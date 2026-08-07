@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
   PROCESS_VIDEO_JOB,
+  ProcessableVideoKind,
   ProcessVideoJobData,
   VIDEO_PROCESSING_PRIORITY_DEFAULT,
   VIDEO_PROCESSING_QUEUE,
@@ -25,13 +26,14 @@ export class VideoProcessingService {
   ) {}
 
   async enqueue(
-    videoId: string,
+    kind: ProcessableVideoKind,
+    id: string,
     priority: number = VIDEO_PROCESSING_PRIORITY_DEFAULT,
   ): Promise<void> {
     try {
       await this.queue.add(
         PROCESS_VIDEO_JOB,
-        { videoId },
+        { kind, id },
         {
           attempts: 3,
           backoff: { type: 'exponential', delay: 5000 },
@@ -42,7 +44,7 @@ export class VideoProcessingService {
       );
     } catch (err) {
       this.logger.error(
-        `Não foi possível enfileirar o processamento do vídeo ${videoId}: ${
+        `Não foi possível enfileirar o processamento do vídeo (${kind}) ${id}: ${
           (err as Error).message
         }`,
       );

@@ -9,6 +9,12 @@ export const PROCESS_VIDEO_JOB = 'process-video';
 export const VIDEO_PROCESSING_PRIORITY_DEFAULT = 10;
 export const VIDEO_PROCESSING_PRIORITY_HIGH = 1;
 
+// Mesma fila/worker processa tanto Video (vinculado a projeto) quanto
+// PortfolioVideo (vitrine da agencia, upload dedicado sem projeto) - o
+// job so precisa saber em qual tabela ler/gravar o resultado.
+export type ProcessableVideoKind = 'video' | 'portfolioVideo';
+
 export interface ProcessVideoJobData {
-  videoId: string;
+  kind: ProcessableVideoKind;
+  id: string;
 }
