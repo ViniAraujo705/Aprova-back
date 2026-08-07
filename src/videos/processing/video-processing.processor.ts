@@ -74,6 +74,14 @@ export class VideoProcessingProcessor extends WorkerHost {
         this.logger.warn(`${kind} ${id} não encontrado; job ignorado.`);
         return;
       }
+      // Foto nunca enfileira job (ver PortfoliosService.uploadComplete) -
+      // urlStorage só é null aqui se algo enfileirou por engano.
+      if (!portfolioVideo.urlStorage) {
+        this.logger.warn(
+          `${kind} ${id} sem urlStorage (item de foto?); job ignorado.`,
+        );
+        return;
+      }
       urlStorage = portfolioVideo.urlStorage;
       nome = portfolioVideo.titulo;
     }

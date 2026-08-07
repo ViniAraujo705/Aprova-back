@@ -44,6 +44,13 @@ enum ProcessamentoStatus {
   erro
 }
 
+// Tipo de midia de um item de portfolio - foto nao passa pelo pipeline de
+// thumbnail/otimizacao (ver PortfolioVideo.tipoMidia).
+enum PortfolioMediaType {
+  video
+  foto
+}
+
 enum InviteStatus {
   pendente
   aceito
@@ -382,9 +389,13 @@ model PortfolioVideo {
   id                  String              @id @default(uuid())
   portfolioId         String              @map("portfolio_id")
   sourceVideoId       String?             @map("source_video_id")
+  // "foto": sem pipeline de otimizacao/thumbnail - urlStorage/urlOtimizada
+  // ficam null e a propria foto vira posterUrl (ver PortfoliosService.
+  // uploadComplete). "video": comportamento de sempre.
+  tipoMidia           PortfolioMediaType  @default(video) @map("tipo_midia")
   titulo              String
   descricao           String?
-  urlStorage          String              @map("url_storage")
+  urlStorage          String?             @map("url_storage")
   urlOtimizada        String?             @map("url_otimizada")
   posterUrl           String?             @map("poster_url")
   statusProcessamento ProcessamentoStatus @default(processando) @map("status_processamento")

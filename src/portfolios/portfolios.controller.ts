@@ -20,11 +20,11 @@ import {
   CurrentUser,
   AuthUser,
 } from '../auth/decorators/current-user.decorator';
-import { UploadUrlDto } from '../videos/dto/upload-url.dto';
 import { PortfoliosService } from './portfolios.service';
 import { CreatePortfolioDto } from './dto/create-portfolio.dto';
 import { UpdatePortfolioDto } from './dto/update-portfolio.dto';
 import { AddExistingVideoDto } from './dto/add-existing-video.dto';
+import { PortfolioUploadUrlDto } from './dto/upload-url.dto';
 import { PortfolioUploadCompleteDto } from './dto/upload-complete.dto';
 import { UpdatePortfolioVideoDto } from './dto/update-portfolio-video.dto';
 import { ReorderPortfolioVideosDto } from './dto/reorder-portfolio-videos.dto';
@@ -102,7 +102,7 @@ export class PortfoliosController {
   createUploadUrl(
     @CurrentUser() user: AuthUser,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Body() dto: UploadUrlDto,
+    @Body() dto: PortfolioUploadUrlDto,
   ) {
     return this.portfoliosService.createUploadUrl(user.accountId, id, dto);
   }

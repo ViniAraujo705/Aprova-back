@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { PortfolioMediaType } from '@prisma/client';
 
 export class PortfolioUploadCompleteDto {
   // URL/key retornada pelo passo de upload-url (publicUrl)
@@ -9,6 +10,9 @@ export class PortfolioUploadCompleteDto {
   @IsString()
   @IsNotEmpty()
   nomeArquivo: string;
+
+  @IsIn(Object.values(PortfolioMediaType))
+  tipoMidia: PortfolioMediaType;
 
   // Se omitido, usa o nomeArquivo como titulo
   @IsOptional()

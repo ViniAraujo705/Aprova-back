@@ -4,12 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Plan, PortfolioVideo } from '@prisma/client';
+import { PortfolioMediaType, Plan, PortfolioVideo } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { createWithUniqueSlugLinkPublico } from '../common/short-id.util';
 import { StorageService } from '../storage/storage.service';
 import { PlansService } from '../plans/plans.service';
-import { UploadUrlDto } from '../videos/dto/upload-url.dto';
 import { VideoProcessingService } from '../videos/processing/video-processing.service';
 import {
   VIDEO_PROCESSING_PRIORITY_DEFAULT,
@@ -18,6 +17,7 @@ import {
 import { CreatePortfolioDto } from './dto/create-portfolio.dto';
 import { UpdatePortfolioDto } from './dto/update-portfolio.dto';
 import { AddExistingVideoDto } from './dto/add-existing-video.dto';
+import { PortfolioUploadUrlDto } from './dto/upload-url.dto';
 import { PortfolioUploadCompleteDto } from './dto/upload-complete.dto';
 import { UpdatePortfolioVideoDto } from './dto/update-portfolio-video.dto';
 import { ReorderPortfolioVideosDto } from './dto/reorder-portfolio-videos.dto';
@@ -138,6 +138,9 @@ export class PortfoliosService {
       data: {
         portfolioId,
         sourceVideoId: video.id,
+        // Sempre "video" - nao existe equivalente pra foto (ver
+        // AddExistingVideoDto).
+        tipoMidia: PortfolioMediaType.video,
         titulo: dto.titulo || video.nomeArquivo,
         descricao: dto.descricao ?? null,
         urlStorage: video.urlStorage,
@@ -155,7 +158,7 @@ export class PortfoliosService {
   async createUploadUrl(
     accountId: string,
     portfolioId: string,
-    dto: UploadUrlDto,
+    dto: PortfolioUploadUrlDto,
   ) {
     await this.getOwnedPortfolio(accountId, portfolioId);
     return this.storage.createPresignedUploadIn(
@@ -165,7 +168,13 @@ export class PortfoliosService {
     );
   }
 
-  /** Registra, direto no portfolio, um video enviado pelo passo de upload-url - sem projeto/cliente por tras. */
+  /**
+   * Registra, direto no portfolio, um video ou foto enviado pelo passo de
+   * upload-url - sem projeto/cliente por tras. Foto nao passa pelo pipeline
+   * de thumbnail/otimizacao: a propria foto vira `posterUrl` (thumbnail e
+   * tela cheia sao a mesma imagem) e `urlStorage` do item fica null - so
+   * video enfileira processamento em background.
+   */
   async uploadComplete(
     accountId: string,
     portfolioId: string,
@@ -175,22 +184,27 @@ export class PortfoliosService {
     await this.validateUploadedFile(dto.urlStorage);
 
     const ordem = await this.nextOrdem(portfolioId);
+    const isFoto = dto.tipoMidia === PortfolioMediaType.foto;
     const portfolioVideo = await this.prisma.portfolioVideo.create({
       data: {
         portfolioId,
+        tipoMidia: dto.tipoMidia,
         titulo: dto.titulo || dto.nomeArquivo,
         descricao: dto.descricao ?? null,
-        urlStorage: dto.urlStorage,
+        urlStorage: isFoto ? null : dto.urlStorage,
+        posterUrl: isFoto ? dto.urlStorage : null,
+        statusProcessamento: isFoto ? 'pronto' : 'processando',
         ordem,
-        // statusProcessamento inicia "processando" (default do schema)
       },
     });
 
-    await this.processing.enqueue(
-      'portfolioVideo',
-      portfolioVideo.id,
-      await this.processingPriority(accountId),
-    );
+    if (!isFoto) {
+      await this.processing.enqueue(
+        'portfolioVideo',
+        portfolioVideo.id,
+        await this.processingPriority(accountId),
+      );
+    }
 
     return this.findOne(accountId, portfolioId);
   }
@@ -340,10 +354,12 @@ export class PortfoliosService {
   private toVideoResponse(v: PortfolioVideo) {
     return {
       id: v.id,
+      tipoMidia: v.tipoMidia,
       titulo: v.titulo,
       descricao: v.descricao,
       // Sempre a versao "pronta pra tocar": a otimizada quando ja existe,
-      // senao o arquivo original.
+      // senao o arquivo original. Null pra foto (a imagem em si vive em
+      // posterUrl - ver uploadComplete).
       urlStorage: v.urlOtimizada ?? v.urlStorage,
       posterUrl: v.posterUrl,
       statusProcessamento: v.statusProcessamento,

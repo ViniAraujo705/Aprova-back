@@ -117,6 +117,7 @@ export class PublicService {
           orderBy: { ordem: 'asc' },
           select: {
             id: true,
+            tipoMidia: true,
             titulo: true,
             descricao: true,
             urlStorage: true,
@@ -143,6 +144,7 @@ export class PublicService {
       },
       videos: portfolio.videos.map((v) => ({
         id: v.id,
+        tipoMidia: v.tipoMidia,
         titulo: v.titulo,
         descricao: v.descricao,
         urlStorage: v.urlOtimizada ?? v.urlStorage,
