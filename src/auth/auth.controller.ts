@@ -14,6 +14,8 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ConfirmEmailDto } from './dto/confirm-email.dto';
+import { ResendConfirmationDto } from './dto/resend-confirmation.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { AppleLoginDto } from './dto/apple-login.dto';
 import { sessionMetaFrom } from '../sessions/session-meta.util';
@@ -81,5 +83,26 @@ export class AuthController {
   })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
+  }
+
+  @Post('confirm-email')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Confirma o email a partir do token recebido por email.',
+  })
+  confirmEmail(@Body() dto: ConfirmEmailDto) {
+    return this.authService.confirmEmail(dto);
+  }
+
+  @Post('resend-confirmation')
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Reenvia o email de confirmacao (se o email existir e ainda nao estiver confirmado). Resposta e sempre a mesma.',
+  })
+  resendConfirmation(@Body() dto: ResendConfirmationDto) {
+    return this.authService.resendConfirmation(dto);
   }
 }

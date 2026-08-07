@@ -20,6 +20,8 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ConfirmEmailDto } from './dto/confirm-email.dto';
+import { ResendConfirmationDto } from './dto/resend-confirmation.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { AppleLoginDto } from './dto/apple-login.dto';
 import { toMemberDto } from '../common/dto/team-role.util';
@@ -28,6 +30,7 @@ import { toMemberDto } from '../common/dto/team-role.util';
 export class AuthService {
   private readonly SALT_ROUNDS = 10;
   private readonly RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
+  private readonly VERIFICATION_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
   private readonly logger = new Logger(AuthService.name);
   private readonly googleClient = new OAuth2Client();
 
@@ -257,6 +260,76 @@ export class AuthService {
   }
 
   /**
+   * Consome um token de confirmacao de email valido (nao usado, nao
+   * expirado) e marca o usuario como verificado. Invalida os demais tokens
+   * pendentes do usuario, mesmo padrao de resetPassword.
+   */
+  async confirmEmail(dto: ConfirmEmailDto): Promise<{ confirmed: true }> {
+    const verification = await this.prisma.emailVerificationToken.findUnique({
+      where: { token: dto.token },
+      select: { id: true, userId: true, expiresEm: true, usedEm: true },
+    });
+
+    if (
+      !verification ||
+      verification.usedEm ||
+      verification.expiresEm < new Date()
+    ) {
+      throw new NotFoundException('Token invalido ou expirado');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: verification.userId },
+        data: { emailVerificadoEm: new Date() },
+      }),
+      this.prisma.emailVerificationToken.update({
+        where: { id: verification.id },
+        data: { usedEm: new Date() },
+      }),
+      // Invalida quaisquer outros tokens pendentes do mesmo usuario.
+      this.prisma.emailVerificationToken.updateMany({
+        where: {
+          userId: verification.userId,
+          usedEm: null,
+          id: { not: verification.id },
+        },
+        data: { usedEm: new Date() },
+      }),
+    ]);
+
+    return { confirmed: true };
+  }
+
+  /**
+   * Reenvia o email de confirmacao caso o usuario ainda nao tenha
+   * verificado. Resposta generica (mesmo padrao de forgotPassword) - nao
+   * revela se o email existe ou ja esta verificado.
+   */
+  async resendConfirmation(
+    dto: ResendConfirmationDto,
+  ): Promise<{ sent: true }> {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      select: { id: true, nome: true, email: true, emailVerificadoEm: true },
+    });
+
+    if (user && !user.emailVerificadoEm) {
+      try {
+        await this.sendVerificationEmail(user);
+      } catch (err) {
+        // Nao propaga: a resposta ao cliente ja e generica e nao deve
+        // revelar se o envio falhou (ex.: dominio de email invalido).
+        this.logger.warn(
+          `Falha ao reenviar email de confirmacao para ${user.email}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    return { sent: true };
+  }
+
+  /**
    * Encontra o usuario ja vinculado a esse provider social; se nao houver,
    * mas ja existir conta com o mesmo email (verificado pelo provider),
    * vincula o provider a essa conta; caso contrario cria uma conta nova
@@ -293,6 +366,10 @@ export class AuthService {
           googleId: isGoogle ? params.providerId : undefined,
           appleId: !isGoogle ? params.providerId : undefined,
           avatarUrl: existingByEmail.avatarUrl ?? params.avatarUrl,
+          // O provider ja garantiu (email_verified) que esse email pertence
+          // a quem esta logando - vale como confirmacao tambem se a conta
+          // local ainda nao tinha confirmado.
+          emailVerificadoEm: existingByEmail.emailVerificadoEm ?? new Date(),
         },
       });
     }
@@ -330,6 +407,10 @@ export class AuthService {
         googleId: params.googleId,
         appleId: params.appleId,
         avatarUrl: params.avatarUrl,
+        // Login social ja chega com o email verificado pelo provider
+        // (checado em loginWithGoogle/loginWithApple antes de chegar aqui).
+        emailVerificadoEm:
+          params.googleId || params.appleId ? new Date() : undefined,
         role: UserRole.owner,
         account: {
           create: {
@@ -350,7 +431,68 @@ export class AuthService {
     // OnboardingService.seedExampleData nunca lança — trata o próprio erro.
     void this.onboarding.seedExampleData(user.accountId);
 
+    // Email de boas-vindas em background (não bloqueia o cadastro).
+    // sendWelcomeEmail nunca lança — trata o próprio erro, mesmo padrão acima.
+    void this.sendWelcomeEmail(user);
+
     return user;
+  }
+
+  /**
+   * Dispara o email de boas-vindas apos o cadastro. Login social (Google/
+   * Apple) ja chega com o email verificado pelo provider - so recebe o
+   * texto de boas-vindas. Cadastro por email/senha ganha tambem o link de
+   * confirmacao (token valido por 7 dias). Nunca lanca - mesmo padrao de
+   * OnboardingService.seedExampleData.
+   */
+  private async sendWelcomeEmail(user: User): Promise<void> {
+    try {
+      if (user.emailVerificadoEm) {
+        await this.mail.send(
+          user.email,
+          'Bem-vindo(a) ao Vistoow!',
+          `Ola, ${user.nome}!\n\nSua conta foi criada com sucesso. Bem-vindo(a) ao Vistoow.`,
+        );
+        return;
+      }
+
+      await this.sendVerificationEmail(user, { welcome: true });
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao enviar email de boas-vindas para ${user.email}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Gera um token de confirmacao de email (valido por 7 dias) e envia o
+   * link por email. Usado tanto no primeiro email de boas-vindas quanto no
+   * reenvio manual (resendConfirmation).
+   */
+  private async sendVerificationEmail(
+    user: { id: string; nome: string; email: string },
+    opts: { welcome?: boolean } = {},
+  ): Promise<void> {
+    const verification = await this.prisma.emailVerificationToken.create({
+      data: {
+        userId: user.id,
+        expiresEm: new Date(Date.now() + this.VERIFICATION_TOKEN_TTL_MS),
+      },
+      select: { token: true },
+    });
+
+    const confirmUrl = this.buildConfirmUrl(verification.token);
+    const intro = opts.welcome
+      ? `Ola, ${user.nome}!\n\nSua conta foi criada com sucesso. Bem-vindo(a) ao Vistoow.`
+      : `Ola, ${user.nome}!`;
+
+    await this.mail.send(
+      user.email,
+      opts.welcome
+        ? 'Bem-vindo(a) ao Vistoow!'
+        : 'Confirme seu email - Vistoow',
+      `${intro}\n\nConfirme seu email acessando o link abaixo (valido por 7 dias):\n${confirmUrl}`,
+    );
   }
 
   /**
@@ -380,6 +522,7 @@ export class AuthService {
         corDestaque: user.corDestaque,
         nomeAgencia: account?.nomeAgencia ?? null,
         criadoEm: user.criadoEm,
+        emailVerificado: Boolean(user.emailVerificadoEm),
       }),
       access_token: this.signToken(
         user.id,
@@ -405,6 +548,14 @@ export class AuthService {
       .trim();
     const origin = base && base !== '*' ? base : 'http://localhost:5173';
     return `${origin}/redefinir-senha/${token}`;
+  }
+
+  private buildConfirmUrl(token: string): string {
+    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
+      .split(',')[0]
+      .trim();
+    const origin = base && base !== '*' ? base : 'http://localhost:5173';
+    return `${origin}/confirmar-email/${token}`;
   }
 
   private signToken(

@@ -36,6 +36,7 @@ export class UsersService {
           logoUrl: true,
           corDestaque: true,
           criadoEm: true,
+          emailVerificadoEm: true,
         },
       }),
       this.prisma.account.findUniqueOrThrow({
@@ -44,7 +45,12 @@ export class UsersService {
       }),
     ]);
 
-    return { ...toMemberDto(user), nomeAgencia: account.nomeAgencia };
+    const { emailVerificadoEm, ...rest } = user;
+    return {
+      ...toMemberDto(rest),
+      nomeAgencia: account.nomeAgencia,
+      emailVerificado: Boolean(emailVerificadoEm),
+    };
   }
 
   /**
@@ -67,7 +73,12 @@ export class UsersService {
       where: { id: userId },
       data: {
         ...(dto.nome !== undefined ? { nome: dto.nome } : {}),
-        ...(dto.email !== undefined ? { email: dto.email } : {}),
+        // Trocar o email invalida a confirmacao anterior - o novo endereco
+        // ainda nao foi verificado. Usuario pode confirmar de novo via
+        // POST /auth/resend-confirmation.
+        ...(dto.email !== undefined
+          ? { email: dto.email, emailVerificadoEm: null }
+          : {}),
         ...(dto.fotoUrl !== undefined ? { avatarUrl: dto.fotoUrl } : {}),
       },
       select: {
@@ -79,10 +90,15 @@ export class UsersService {
         accountId: true,
         avatarUrl: true,
         criadoEm: true,
+        emailVerificadoEm: true,
       },
     });
 
-    return toMemberDto(user);
+    const { emailVerificadoEm, ...rest } = user;
+    return {
+      ...toMemberDto(rest),
+      emailVerificado: Boolean(emailVerificadoEm),
+    };
   }
 
   /**

@@ -116,15 +116,20 @@ model User {
   logoUrl     String?    @map("logo_url")
   corDestaque String?    @map("cor_destaque")
   criadoEm    DateTime   @default(now()) @map("criado_em")
+  // Null = ainda nao confirmou o email. Preenchido na hora da criacao para
+  // contas via Google/Apple (o provider ja verificou), ou ao consumir um
+  // EmailVerificationToken para contas via email/senha.
+  emailVerificadoEm DateTime? @map("email_verificado_em")
 
-  account             Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  comments            Comment[]
+  account                 Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  comments                Comment[]
   // Videos em que este usuario (owner ou editor) e o responsavel designado
-  videosResponsavel   Video[]
-  passwordResetTokens PasswordResetToken[]
-  notifications       Notification[]
-  sessions            Session[]
-  recordingEvents     RecordingEvent[]
+  videosResponsavel       Video[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  notifications           Notification[]
+  sessions                Session[]
+  recordingEvents         RecordingEvent[]
 
   @@index([accountId])
   @@map("users")
@@ -166,6 +171,23 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+// Token de uso unico para confirmar o email no cadastro (fluxo de boas-vindas).
+// Expira em 7 dias (ver AuthService.sendWelcomeEmail/resendConfirmation);
+// usedEm marca consumo, mesmo padrao de PasswordResetToken.
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique @default(uuid())
+  expiresEm DateTime  @map("expires_em")
+  usedEm    DateTime? @map("used_em")
+  criadoEm  DateTime  @default(now()) @map("criado_em")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
 }
 
 model Invite {

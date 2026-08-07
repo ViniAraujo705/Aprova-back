@@ -103,7 +103,7 @@ Body:
 Resposta `201`:
 ```json
 {
-  "user": { "id": "...", "nome": "Maria Silva", "email": "maria@agencia.com", "teamRole": "owner", "status": "ativo", "accountId": "...", "logoUrl": null, "corDestaque": null, "nomeAgencia": "Agência Maria", "criadoEm": "..." },
+  "user": { "id": "...", "nome": "Maria Silva", "email": "maria@agencia.com", "teamRole": "owner", "status": "ativo", "accountId": "...", "logoUrl": null, "corDestaque": null, "nomeAgencia": "Agência Maria", "criadoEm": "...", "emailVerificado": false },
   "access_token": "eyJhbGciOi..."
 }
 ```
@@ -199,6 +199,36 @@ Resposta `200`: `{ "reset": true }`.
 Erros: `404` token inválido, expirado ou já utilizado. Ao ser consumido
 com sucesso, o token invalida quaisquer outros tokens de reset pendentes
 do mesmo usuário.
+
+### `POST /auth/confirm-email`
+Sem autenticação. Rate limit: **5/min**.
+
+Body: `{ "token": "<uuid>" }`
+
+Resposta `200`: `{ "confirmed": true }`.
+
+Erros: `404` token inválido, expirado ou já utilizado. Ao ser consumido
+com sucesso, o token invalida quaisquer outros tokens de confirmação
+pendentes do mesmo usuário.
+
+### `POST /auth/resend-confirmation`
+Sem autenticação. Rate limit: **3/min**.
+
+Body: `{ "email": "..." }`
+
+Resposta `200` sempre `{ "sent": true }`, exista ou não o email na base, ou
+já esteja confirmado (mesmo padrão de `forgot-password` — não revela
+estado da conta). Se existir e ainda não confirmado, envia por email um
+link `/confirmar-email/:token` válido por 7 dias.
+
+> **Fluxo de confirmação de email:** todo cadastro por email/senha
+> (`POST /auth/register`) dispara em background um email de boas-vindas
+> contendo esse link de confirmação (válido por 7 dias). Login social
+> (Google/Apple) não recebe o link — o provider já garante que o email é
+> verificado, então a conta já nasce com `emailVerificado: true`. O campo
+> `user.emailVerificado` vem em toda resposta de autenticação
+> (`register`/`login`/`google`/`apple`) e em `GET /users/me` — hoje é só
+> informativo (login **não** é bloqueado por email não confirmado).
 
 ---
 
@@ -619,7 +649,7 @@ Autenticado — qualquer role (`owner`, `editor`, `admin`).
 
 `GET /users/me` devolve:
 ```json
-{ "id": "...", "nome": "...", "email": "...", "teamRole": "owner", "status": "ativo", "accountId": "...", "fotoUrl": "...", "logoUrl": "...", "corDestaque": "#1E90FF", "nomeAgencia": "Agência Maria", "criadoEm": "..." }
+{ "id": "...", "nome": "...", "email": "...", "teamRole": "owner", "status": "ativo", "accountId": "...", "fotoUrl": "...", "logoUrl": "...", "corDestaque": "#1E90FF", "nomeAgencia": "Agência Maria", "criadoEm": "...", "emailVerificado": true }
 ```
 Use este endpoint pra restaurar logo/cor/nome da agência num refresh de
 página — o mesmo shape (`logoUrl`/`corDestaque`/`nomeAgencia`) já vem em
@@ -629,14 +659,16 @@ chamar `GET /users/me` logo após o login.
 Todos os campos do `PATCH` são opcionais — atualiza só o que vier no body.
 Resposta:
 ```json
-{ "id": "...", "nome": "...", "email": "...", "teamRole": "owner", "status": "ativo", "accountId": "...", "criadoEm": "...", "fotoUrl": "..." }
+{ "id": "...", "nome": "...", "email": "...", "teamRole": "owner", "status": "ativo", "accountId": "...", "criadoEm": "...", "fotoUrl": "...", "emailVerificado": false }
 ```
 Erros: `409` se o novo `email` já pertence a outra conta · `400` validação
 (`nome` vazio, `email` inválido).
 
 > Troca de email **não exige reautenticação** nesta v1 — o JWT identifica o
 > usuário pelo `id` (não pelo `email`), então a sessão continua válida
-> normalmente depois da troca.
+> normalmente depois da troca. Trocar o email zera `emailVerificado`
+> (o novo endereço ainda não foi confirmado) — o usuário precisa confirmar
+> de novo via `POST /auth/resend-confirmation` + `POST /auth/confirm-email`.
 
 `POST /users/me/photo-upload-url` gera uma presigned URL igual à do logo da
 agência (ver seção abaixo), só que na pasta `avatars` (avatar pessoal, não
