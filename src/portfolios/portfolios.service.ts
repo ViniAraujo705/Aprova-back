@@ -21,6 +21,7 @@ import { PortfolioUploadUrlDto } from './dto/upload-url.dto';
 import { PortfolioUploadCompleteDto } from './dto/upload-complete.dto';
 import { UpdatePortfolioVideoDto } from './dto/update-portfolio-video.dto';
 import { ReorderPortfolioVideosDto } from './dto/reorder-portfolio-videos.dto';
+import { PortfolioCoverUploadUrlDto } from './dto/cover-upload-url.dto';
 
 const DEFAULT_MAX_VIDEO_SIZE_MB = 2048; // 2 GB
 
@@ -64,6 +65,9 @@ export class PortfoliosService {
   }
 
   async create(accountId: string, dto: CreatePortfolioDto) {
+    if (dto.categoriaId) {
+      await this.assertCategoryOwned(accountId, dto.categoriaId);
+    }
     const portfolio = await createWithUniqueSlugLinkPublico(
       dto.nome,
       (linkPublico) =>
@@ -72,6 +76,7 @@ export class PortfoliosService {
             accountId,
             nome: dto.nome,
             descricao: dto.descricao ?? null,
+            categoriaId: dto.categoriaId ?? null,
             linkPublico,
           },
           include: { videos: true },
@@ -82,6 +87,9 @@ export class PortfoliosService {
 
   async update(accountId: string, id: string, dto: UpdatePortfolioDto) {
     await this.getOwnedPortfolio(accountId, id);
+    if (dto.categoriaId) {
+      await this.assertCategoryOwned(accountId, dto.categoriaId);
+    }
     const portfolio = await this.prisma.portfolio.update({
       where: { id },
       data: dto,
@@ -163,6 +171,24 @@ export class PortfoliosService {
     await this.getOwnedPortfolio(accountId, portfolioId);
     return this.storage.createPresignedUploadIn(
       'portfolio',
+      dto.nomeArquivo,
+      dto.contentType,
+    );
+  }
+
+  /**
+   * Presigned URL so de imagem pra capa do album - sem passo de
+   * confirmacao: a publicUrl retornada aqui vai direto num
+   * PATCH /portfolios/:id { capaUrl }.
+   */
+  async createCoverUploadUrl(
+    accountId: string,
+    portfolioId: string,
+    dto: PortfolioCoverUploadUrlDto,
+  ) {
+    await this.getOwnedPortfolio(accountId, portfolioId);
+    return this.storage.createPresignedUploadIn(
+      'portfolio-covers',
       dto.nomeArquivo,
       dto.contentType,
     );
@@ -326,6 +352,18 @@ export class PortfoliosService {
     );
   }
 
+  private async assertCategoryOwned(accountId: string, categoriaId: string) {
+    const category = await this.prisma.portfolioCategory.findFirst({
+      where: { id: categoriaId, accountId },
+      select: { id: true },
+    });
+    if (!category) {
+      throw new BadRequestException(
+        'categoriaId invalido ou nao pertence a esta conta',
+      );
+    }
+  }
+
   private async getOwnedPortfolio(accountId: string, id: string) {
     const portfolio = await this.prisma.portfolio.findFirst({
       where: { id, accountId },
@@ -373,6 +411,8 @@ export class PortfoliosService {
     nome: string;
     descricao: string | null;
     linkPublico: string;
+    capaUrl: string | null;
+    categoriaId: string | null;
     criadoEm: Date;
     atualizadoEm: Date;
     videos: PortfolioVideo[];
@@ -383,7 +423,10 @@ export class PortfoliosService {
       nome: portfolio.nome,
       descricao: portfolio.descricao,
       linkPublico: portfolio.linkPublico,
-      capaUrl: videos[0]?.posterUrl ?? null,
+      categoriaId: portfolio.categoriaId,
+      // Capa explicita quando setada (ver cover-upload-url); senao cai no
+      // posterUrl do primeiro item, mesmo comportamento de antes do campo existir.
+      capaUrl: portfolio.capaUrl ?? videos[0]?.posterUrl ?? null,
       videos: videos.map((v) => this.toVideoResponse(v)),
       criadoEm: portfolio.criadoEm,
       atualizadoEm: portfolio.atualizadoEm,
@@ -395,6 +438,8 @@ export class PortfoliosService {
     nome: string;
     descricao: string | null;
     linkPublico: string;
+    capaUrl: string | null;
+    categoriaId: string | null;
     criadoEm: Date;
     atualizadoEm: Date;
     videos: { posterUrl: string | null }[];
@@ -404,7 +449,8 @@ export class PortfoliosService {
       nome: portfolio.nome,
       descricao: portfolio.descricao,
       linkPublico: portfolio.linkPublico,
-      capaUrl: portfolio.videos[0]?.posterUrl ?? null,
+      categoriaId: portfolio.categoriaId,
+      capaUrl: portfolio.capaUrl ?? portfolio.videos[0]?.posterUrl ?? null,
       criadoEm: portfolio.criadoEm,
       atualizadoEm: portfolio.atualizadoEm,
     };

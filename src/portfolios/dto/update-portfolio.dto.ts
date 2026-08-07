@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsUrl,
+} from 'class-validator';
 
 export class UpdatePortfolioDto {
   @IsOptional()
@@ -10,4 +16,15 @@ export class UpdatePortfolioDto {
   @IsOptional()
   @IsString()
   descricao?: string | null;
+
+  // null limpa a categoria; ausente deixa como esta
+  @IsOptional()
+  @IsUUID('4', { message: 'categoriaId invalido' })
+  categoriaId?: string | null;
+
+  // Setado a partir da publicUrl de POST /portfolios/:id/cover-upload-url.
+  // null remove a capa explicita (volta a cair no fallback do primeiro item).
+  @IsOptional()
+  @IsUrl({ require_tld: false }, { message: 'capaUrl deve ser uma URL valida' })
+  capaUrl?: string | null;
 }

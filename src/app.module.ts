@@ -13,6 +13,8 @@ import { ClientsModule } from './clients/clients.module';
 import { ProjectsModule } from './projects/projects.module';
 import { VideosModule } from './videos/videos.module';
 import { PortfoliosModule } from './portfolios/portfolios.module';
+import { PortfolioCategoriesModule } from './portfolio-categories/portfolio-categories.module';
+import { PortfolioProfileModule } from './portfolio-profile/portfolio-profile.module';
 import { PublicModule } from './public/public.module';
 import { AdminModule } from './admin/admin.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -67,6 +69,8 @@ import { CrewModule } from './crew/crew.module';
     ProjectsModule,
     VideosModule,
     PortfoliosModule,
+    PortfolioCategoriesModule,
+    PortfolioProfileModule,
     PublicModule,
     AdminModule,
     DashboardModule,

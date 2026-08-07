@@ -14,31 +14,43 @@ export function generateShortId(length = 10): string {
   return result;
 }
 
-const isLinkPublicoCollision = (err: unknown): boolean =>
+const isFieldCollision = (err: unknown, field: string): boolean =>
   err instanceof Prisma.PrismaClientKnownRequestError &&
   err.code === 'P2002' &&
-  !!(err.meta?.target as string[] | undefined)?.includes('linkPublico');
+  !!(err.meta?.target as string[] | undefined)?.includes(field);
 
 /**
- * Executa `createFn` com um linkPublico curto recem-gerado, tentando
- * novamente em caso de colisao de unicidade (Prisma P2002 no campo
- * linkPublico). Links UUID ja emitidos antes desta mudanca continuam
- * validos - so o gerador usado em novos registros muda.
+ * Executa `createFn` com um valor curto recem-gerado para `field`, tentando
+ * novamente em caso de colisao de unicidade (Prisma P2002 nesse campo).
+ * Generico o suficiente para qualquer campo unico gerado aleatoriamente
+ * (linkPublico, linkHub, ...).
  */
-export async function createWithUniqueLinkPublico<T>(
-  createFn: (linkPublico: string) => Promise<T>,
+export async function createWithUniqueRandomField<T>(
+  field: string,
+  createFn: (value: string) => Promise<T>,
   maxAttempts = 5,
 ): Promise<T> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await createFn(generateShortId());
     } catch (err) {
-      if (!isLinkPublicoCollision(err) || attempt === maxAttempts) {
+      if (!isFieldCollision(err, field) || attempt === maxAttempts) {
         throw err;
       }
     }
   }
-  throw new Error('Nao foi possivel gerar um linkPublico unico');
+  throw new Error(`Nao foi possivel gerar um ${field} unico`);
+}
+
+/**
+ * Links UUID ja emitidos antes desta mudanca continuam validos - so o
+ * gerador usado em novos registros muda.
+ */
+export function createWithUniqueLinkPublico<T>(
+  createFn: (linkPublico: string) => Promise<T>,
+  maxAttempts = 5,
+): Promise<T> {
+  return createWithUniqueRandomField('linkPublico', createFn, maxAttempts);
 }
 
 // Combining Diacritical Marks (U+0300-U+036F) - o que sobra depois de um
@@ -82,7 +94,7 @@ export async function createWithUniqueSlugLinkPublico<T>(
     try {
       return await createFn(candidate);
     } catch (err) {
-      if (!isLinkPublicoCollision(err) || attempt === maxAttempts) {
+      if (!isFieldCollision(err, 'linkPublico') || attempt === maxAttempts) {
         throw err;
       }
     }

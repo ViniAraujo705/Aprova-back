@@ -28,6 +28,7 @@ import { PortfolioUploadUrlDto } from './dto/upload-url.dto';
 import { PortfolioUploadCompleteDto } from './dto/upload-complete.dto';
 import { UpdatePortfolioVideoDto } from './dto/update-portfolio-video.dto';
 import { ReorderPortfolioVideosDto } from './dto/reorder-portfolio-videos.dto';
+import { PortfolioCoverUploadUrlDto } from './dto/cover-upload-url.dto';
 
 /**
  * Vitrine da agencia (distinta da galeria de projeto): colecao curada
@@ -118,6 +119,20 @@ export class PortfoliosController {
     @Body() dto: PortfolioUploadCompleteDto,
   ) {
     return this.portfoliosService.uploadComplete(user.accountId, id, dto);
+  }
+
+  @Post(':id/cover-upload-url')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Presigned URL so de imagem pra capa do album (sem passo de confirmacao - a publicUrl vai direto num PATCH /portfolios/:id { capaUrl }).',
+  })
+  createCoverUploadUrl(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: PortfolioCoverUploadUrlDto,
+  ) {
+    return this.portfoliosService.createCoverUploadUrl(user.accountId, id, dto);
   }
 
   @Patch(':id/videos/order')

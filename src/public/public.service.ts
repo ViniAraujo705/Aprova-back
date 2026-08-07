@@ -157,6 +157,87 @@ export class PublicService {
   }
 
   /**
+   * Hub publico unico da agencia (perfil + categorias de portfolio) - ver
+   * PortfolioProfileService/PortfolioCategoriesService. So categorias com
+   * pelo menos um album com item aparecem (album vazio ou sem categoria
+   * fica de fora do hub, mas o link direto /p/:linkPublico continua valendo).
+   */
+  async getPortfolioHub(linkHub: string) {
+    const profile = await this.prisma.portfolioProfile.findUnique({
+      where: { linkHub },
+      select: {
+        fotoUrl: true,
+        account: {
+          select: {
+            nomeAgencia: true,
+            users: {
+              where: { role: UserRole.owner },
+              select: { logoUrl: true, corDestaque: true },
+              orderBy: { criadoEm: 'asc' },
+              take: 1,
+            },
+            portfolioCategories: {
+              orderBy: { ordem: 'asc' },
+              select: {
+                id: true,
+                nome: true,
+                portfolios: {
+                  orderBy: { criadoEm: 'desc' },
+                  select: {
+                    id: true,
+                    nome: true,
+                    descricao: true,
+                    linkPublico: true,
+                    capaUrl: true,
+                    videos: {
+                      orderBy: { ordem: 'asc' },
+                      take: 1,
+                      select: { posterUrl: true },
+                    },
+                    _count: { select: { videos: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!profile) {
+      throw new NotFoundException('Hub de portfolio nao encontrado');
+    }
+
+    const categorias = profile.account.portfolioCategories
+      .map((cat) => ({
+        id: cat.id,
+        nome: cat.nome,
+        // So albuns com pelo menos um item (video ou foto) - album vazio
+        // nao aparece no hub.
+        portfolios: cat.portfolios
+          .filter((p) => p._count.videos > 0)
+          .map((p) => ({
+            id: p.id,
+            nome: p.nome,
+            descricao: p.descricao,
+            link: p.linkPublico,
+            capaUrl: p.capaUrl ?? p.videos[0]?.posterUrl ?? null,
+          })),
+      }))
+      // Categoria sem nenhum album (apos o filtro acima) nao aparece.
+      .filter((cat) => cat.portfolios.length > 0);
+
+    return {
+      fotoUrl: profile.fotoUrl,
+      agencia: {
+        nome: profile.account.nomeAgencia,
+        logoUrl: profile.account.users[0]?.logoUrl ?? null,
+        corDestaque: profile.account.users[0]?.corDestaque ?? null,
+      },
+      categorias,
+    };
+  }
+
+  /**
    * Retorna apenas os dados do video referenciado pelo link_publico,
    * seus comentarios e ratings. Nenhum dado de outros videos, projetos
    * ou do profissional e exposto.

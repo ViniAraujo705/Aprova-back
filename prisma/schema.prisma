@@ -102,6 +102,8 @@ model Account {
   recordingEvents RecordingEvent[]
   crewMembers     CrewMember[]
   portfolios      Portfolio[]
+  portfolioCategories PortfolioCategory[]
+  portfolioProfile    PortfolioProfile?
 
   @@map("accounts")
 }
@@ -367,14 +369,57 @@ model Portfolio {
   nome         String
   descricao    String?
   linkPublico  String   @unique @default(uuid()) @map("link_publico")
+  // Capa explicita do album (upload dedicado - ver POST /portfolios/:id/cover-upload-url).
+  // Nulo ate o owner subir uma: nesse caso a API cai no posterUrl do primeiro
+  // item (por ordem) como fallback (ver PortfoliosService.toResponse).
+  capaUrl      String?  @map("capa_url")
+  // Categoria do hub publico (ver PortfolioCategory) - opcional, null = sem
+  // categoria (nao aparece no hub, so no link direto /p/:linkPublico).
+  categoriaId  String?  @map("categoria_id")
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
-  account Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  videos  PortfolioVideo[]
+  account   Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoria PortfolioCategory? @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
+  videos    PortfolioVideo[]
 
   @@index([accountId])
+  @@index([categoriaId])
   @@map("portfolios")
+}
+
+// Categoria livre criada pelo owner para organizar os albuns no hub publico
+// (ex.: "Casamento", "Institucional") - sem valores fixos. Excluir uma
+// categoria so desassocia os albuns dela (onDelete: SetNull em Portfolio.categoriaId).
+model PortfolioCategory {
+  id           String   @id @default(uuid())
+  accountId    String   @map("account_id")
+  nome         String
+  ordem        Int      @default(0)
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  portfolios Portfolio[]
+
+  @@index([accountId])
+  @@map("portfolio_categories")
+}
+
+// Perfil publico unico da agencia (hub de portfolios) - 1:1 com Account.
+// linkHub e gerado preguicosamente na primeira leitura autenticada (ver
+// PortfolioProfileService.getOrCreate), nunca null na resposta da API.
+model PortfolioProfile {
+  id           String   @id @default(uuid())
+  accountId    String   @unique @map("account_id")
+  fotoUrl      String?  @map("foto_url")
+  linkHub      String   @unique @map("link_hub")
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("portfolio_profiles")
 }
 
 // Item de um Portfolio. Sempre denormalizado (urlStorage/posterUrl/etc sao
