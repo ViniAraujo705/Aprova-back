@@ -21,9 +21,7 @@ export const PLAN_BILLING: Record<
   pro: {
     MONTHLY: {
       reason: 'Vistoow Pro (mensal)',
-      // TESTE REAL EM PRODUCAO: valor reduzido temporariamente pro minimo aceito
-      // pela Mercado Pago (R$0.50). Reverter pra 59 assim que o teste terminar.
-      transactionAmount: 0.5,
+      transactionAmount: 59,
       frequency: 1,
       frequencyType: 'months',
     },
