@@ -970,6 +970,8 @@ Resposta:
   "agencia": { "nome": "Agência Maria", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
   "videos": [
     {
+      "id": "uuid",
+      "videoPaiId": "uuid ou null",
       "link": "abc123-...",
       "title": "video.mp4",
       "posterUrl": "https://... ou null",
@@ -983,7 +985,11 @@ Resposta:
 `videos` vem ordenado por `criadoEm` crescente. Cada `link` é o
 `linkPublico` do vídeo — o front navega pra
 `GET /public/videos/:linkPublico` a partir dele (ver seção abaixo) pra
-abrir o player/comentários/rating daquele vídeo específico. `404` se
+abrir o player/comentários/rating daquele vídeo específico. `id` e
+`videoPaiId` espelham os mesmos campos de `GET /videos`: quando um vídeo
+tem `videoPaiId` apontando pra outro `id` desta mesma lista, ele foi
+substituído por uma versão mais nova (`POST /videos/:id/new-version`) — o
+front usa isso pra esconder a versão antiga da galeria. `404` se
 `:linkPublico` não corresponder a nenhum projeto.
 
 ### `GET /public/videos/:linkPublico`

@@ -53,6 +53,8 @@ export class PublicService {
         videos: {
           orderBy: { criadoEm: 'asc' },
           select: {
+            id: true,
+            videoPaiId: true,
             linkPublico: true,
             nomeArquivo: true,
             thumbnailUrl: true,
@@ -76,6 +78,8 @@ export class PublicService {
         corDestaque: project.account.users[0]?.corDestaque ?? null,
       },
       videos: project.videos.map((v) => ({
+        id: v.id,
+        videoPaiId: v.videoPaiId,
         link: v.linkPublico,
         title: v.nomeArquivo,
         posterUrl: v.thumbnailUrl,
