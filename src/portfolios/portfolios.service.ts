@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Plan, PortfolioVideo } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { createWithUniqueSlugLinkPublico } from '../common/short-id.util';
 import { StorageService } from '../storage/storage.service';
 import { PlansService } from '../plans/plans.service';
 import { UploadUrlDto } from '../videos/dto/upload-url.dto';
@@ -63,10 +64,19 @@ export class PortfoliosService {
   }
 
   async create(accountId: string, dto: CreatePortfolioDto) {
-    const portfolio = await this.prisma.portfolio.create({
-      data: { accountId, nome: dto.nome, descricao: dto.descricao ?? null },
-      include: { videos: true },
-    });
+    const portfolio = await createWithUniqueSlugLinkPublico(
+      dto.nome,
+      (linkPublico) =>
+        this.prisma.portfolio.create({
+          data: {
+            accountId,
+            nome: dto.nome,
+            descricao: dto.descricao ?? null,
+            linkPublico,
+          },
+          include: { videos: true },
+        }),
+    );
     return this.toResponse(portfolio);
   }
 

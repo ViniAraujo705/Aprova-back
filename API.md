@@ -430,6 +430,15 @@ direto pro portfólio, sem vínculo com projeto/cliente.
 `capaUrl` pode ser `null` — é o `posterUrl` do primeiro vídeo (por `ordem`),
 `null` se o portfólio ainda não tem vídeo com poster gerado.
 
+`linkPublico` é gerado a partir do `nome` no momento da criação (slug:
+minúsculo, sem acento/pontuação, espaços viram `-`, até 40 caracteres —
+ex.: `"Reels de Verão!"` → `reels-de-verao`; em colisão, ganha um sufixo
+curto aleatório, ex.: `reels-de-verao-a1b2`). Fixo depois de criado —
+renomear o portfólio (`PATCH /portfolios/:id`) **não** muda o link, pra não
+quebrar um link já compartilhado. Ainda assim, opaco: o frontend não deve
+assumir formato fixo (portfólios criados antes desta mudança mantêm o
+link antigo em UUID).
+
 `PortfolioVideo`: `{ id, titulo, descricao, urlStorage (ou urlOtimizada, o
 que estiver pronto para tocar), posterUrl, statusProcessamento, ordem,
 criadoEm }`. Sem `status` de aprovação — não faz sentido fora do fluxo
