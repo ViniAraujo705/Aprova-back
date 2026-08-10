@@ -27,4 +27,11 @@ export class UpdatePortfolioDto {
   @IsOptional()
   @IsUrl({ require_tld: false }, { message: 'capaUrl deve ser uma URL valida' })
   capaUrl?: string | null;
+
+  // Etiqueta o album com a marca de um cliente especifico (so sinalizacao
+  // de marca - ver Portfolio.clienteId). null remove a etiqueta; ausente
+  // deixa como esta. So aceito em PATCH: todo album novo nasce sem cliente.
+  @IsOptional()
+  @IsUUID('4', { message: 'clienteId invalido' })
+  clienteId?: string | null;
 }

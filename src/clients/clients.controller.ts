@@ -23,6 +23,8 @@ import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { ClientPhotoUploadUrlDto } from './dto/client-photo-upload-url.dto';
+import { ClientBrandingLogoUploadUrlDto } from './dto/client-branding-logo-upload-url.dto';
+import { UpdateClientBrandingDto } from './dto/update-client-branding.dto';
 
 @ApiTags('clients')
 @ApiBearerAuth()
@@ -69,5 +71,34 @@ export class ClientsController {
   })
   createPhotoUploadUrl(@Body() dto: ClientPhotoUploadUrlDto) {
     return this.clientsService.createPhotoUploadUrl(dto);
+  }
+
+  @Post(':id/branding/logo-upload-url')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.owner)
+  @ApiOperation({
+    summary:
+      'Gera uma presigned URL para o upload do logo proprio do cliente (R2). So owner - mesma regra do branding da agencia.',
+  })
+  createBrandingLogoUploadUrl(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: ClientBrandingLogoUploadUrlDto,
+  ) {
+    return this.clientsService.createBrandingLogoUploadUrl(
+      user.accountId,
+      id,
+      dto,
+    );
+  }
+
+  @Patch(':id/branding')
+  @Roles(UserRole.owner)
+  updateBranding(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateClientBrandingDto,
+  ) {
+    return this.clientsService.updateBranding(user.accountId, id, dto);
   }
 }

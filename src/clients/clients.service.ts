@@ -1,10 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Client } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { PlansService } from '../plans/plans.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { ClientPhotoUploadUrlDto } from './dto/client-photo-upload-url.dto';
+import { ClientBrandingLogoUploadUrlDto } from './dto/client-branding-logo-upload-url.dto';
+import { UpdateClientBrandingDto } from './dto/update-client-branding.dto';
 
 @Injectable()
 export class ClientsService {
@@ -16,7 +19,7 @@ export class ClientsService {
 
   async create(accountId: string, dto: CreateClientDto) {
     await this.plans.assertCanAddClient(accountId);
-    return this.prisma.client.create({
+    const client = await this.prisma.client.create({
       data: {
         nome: dto.nome,
         email: dto.email,
@@ -25,32 +28,30 @@ export class ClientsService {
         accountId,
       },
     });
+    return this.toResponse(client);
   }
 
-  findAll(accountId: string) {
-    return this.prisma.client.findMany({
+  async findAll(accountId: string) {
+    const clients = await this.prisma.client.findMany({
       where: { accountId },
       orderBy: { nome: 'asc' },
     });
+    return clients.map((c) => this.toResponse(c));
   }
 
   async findOne(accountId: string, id: string) {
-    const client = await this.prisma.client.findFirst({
-      where: { id, accountId },
-    });
-    if (!client) {
-      throw new NotFoundException('Cliente nao encontrado');
-    }
-    return client;
+    const client = await this.findOwnedClient(accountId, id);
+    return this.toResponse(client);
   }
 
   async update(accountId: string, id: string, dto: UpdateClientDto) {
     // Garante que o cliente pertence a conta antes de atualizar
-    await this.findOne(accountId, id);
-    return this.prisma.client.update({
+    await this.findOwnedClient(accountId, id);
+    const client = await this.prisma.client.update({
       where: { id },
       data: dto,
     });
+    return this.toResponse(client);
   }
 
   /**
@@ -60,7 +61,7 @@ export class ClientsService {
    * apagar as linhas e removemos os objetos do storage depois.
    */
   async remove(accountId: string, id: string) {
-    const client = await this.findOne(accountId, id);
+    const client = await this.findOwnedClient(accountId, id);
 
     const videos = await this.prisma.video.findMany({
       where: { project: { clientId: id, accountId } },
@@ -112,5 +113,73 @@ export class ClientsService {
       dto.nomeArquivo,
       dto.contentType,
     );
+  }
+
+  /**
+   * Gera uma presigned URL para o upload do logo proprio do cliente,
+   * mesma mecanica do logo da agencia (POST /users/me/branding/logo-upload-url),
+   * so que numa pasta dedicada (`client-branding`). So owner - mesma regra
+   * do branding da agencia.
+   */
+  async createBrandingLogoUploadUrl(
+    accountId: string,
+    id: string,
+    dto: ClientBrandingLogoUploadUrlDto,
+  ) {
+    await this.findOwnedClient(accountId, id);
+    return this.storage.createPresignedUploadIn(
+      'client-branding',
+      dto.nomeArquivo,
+      dto.contentType,
+    );
+  }
+
+  /**
+   * Atualiza a marca propria do cliente (logo + cor de destaque). null
+   * limpa o campo (volta a herdar o branding da agencia); ausente deixa
+   * como esta. Mesma gate de plano do branding da agencia (whiteLabel).
+   */
+  async updateBranding(
+    accountId: string,
+    id: string,
+    dto: UpdateClientBrandingDto,
+  ) {
+    await this.findOwnedClient(accountId, id);
+    if (dto.logoUrl !== undefined || dto.corDestaque !== undefined) {
+      await this.plans.assertFeature(accountId, 'whiteLabel');
+    }
+
+    const client = await this.prisma.client.update({
+      where: { id },
+      data: {
+        ...(dto.logoUrl !== undefined ? { logoUrl: dto.logoUrl } : {}),
+        ...(dto.corDestaque !== undefined
+          ? { corDestaque: dto.corDestaque }
+          : {}),
+      },
+      select: { logoUrl: true, corDestaque: true },
+    });
+    return client;
+  }
+
+  private async findOwnedClient(accountId: string, id: string) {
+    const client = await this.prisma.client.findFirst({
+      where: { id, accountId },
+    });
+    if (!client) {
+      throw new NotFoundException('Cliente nao encontrado');
+    }
+    return client;
+  }
+
+  private toResponse(client: Client) {
+    const { logoUrl, corDestaque, ...rest } = client;
+    return {
+      ...rest,
+      branding:
+        logoUrl || corDestaque
+          ? { logoUrl: logoUrl ?? null, corDestaque: corDestaque ?? null }
+          : null,
+    };
   }
 }

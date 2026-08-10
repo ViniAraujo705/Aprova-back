@@ -309,10 +309,19 @@ model Client {
   accountId String  @map("account_id")
   // Marca dados de exemplo criados no onboarding, para o usuario poder deletar
   isExemplo Boolean @default(false) @map("is_exemplo")
+  // Marca propria do cliente (white-label revendido pela agencia): quando
+  // setada, sobrepoe campo a campo o branding da agencia (User.logoUrl/
+  // corDestaque) nos links publicos deste cliente - ver ClientsService e
+  // PublicService.getProject/getPortfolio.
+  logoUrl     String? @map("logo_url")
+  corDestaque String? @map("cor_destaque")
 
   account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
   projects        Project[]
   recordingEvents RecordingEvent[]
+  // Albuns de portfolio etiquetados com a marca deste cliente (ver
+  // Portfolio.clienteId) - nao implica posse/restricao de acesso, so marca.
+  portfolios      Portfolio[]
 
   @@index([accountId])
   @@map("clients")
@@ -403,15 +412,22 @@ model Portfolio {
   // Categoria do hub publico (ver PortfolioCategory) - opcional, null = sem
   // categoria (nao aparece no hub, so no link direto /p/:linkPublico).
   categoriaId  String?  @map("categoria_id")
+  // Etiqueta opcional: marca este album como personalizado pra um cliente
+  // especifico (ex.: selecao de cases pra reapresentar a um prospect) - so
+  // sinalizacao de marca (ver Client.logoUrl/corDestaque), nao afeta quem
+  // acessa o link nem dono/criador do album.
+  clienteId    String?  @map("cliente_id")
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
   account   Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
   categoria PortfolioCategory? @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
+  cliente   Client?            @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   videos    PortfolioVideo[]
 
   @@index([accountId])
   @@index([categoriaId])
+  @@index([clienteId])
   @@map("portfolios")
 }
 

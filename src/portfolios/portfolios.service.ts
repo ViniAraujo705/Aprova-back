@@ -90,6 +90,9 @@ export class PortfoliosService {
     if (dto.categoriaId) {
       await this.assertCategoryOwned(accountId, dto.categoriaId);
     }
+    if (dto.clienteId) {
+      await this.assertClientOwned(accountId, dto.clienteId);
+    }
     const portfolio = await this.prisma.portfolio.update({
       where: { id },
       data: dto,
@@ -364,6 +367,18 @@ export class PortfoliosService {
     }
   }
 
+  private async assertClientOwned(accountId: string, clienteId: string) {
+    const client = await this.prisma.client.findFirst({
+      where: { id: clienteId, accountId },
+      select: { id: true },
+    });
+    if (!client) {
+      throw new BadRequestException(
+        'clienteId invalido ou nao pertence a esta conta',
+      );
+    }
+  }
+
   private async getOwnedPortfolio(accountId: string, id: string) {
     const portfolio = await this.prisma.portfolio.findFirst({
       where: { id, accountId },
@@ -413,6 +428,7 @@ export class PortfoliosService {
     linkPublico: string;
     capaUrl: string | null;
     categoriaId: string | null;
+    clienteId: string | null;
     criadoEm: Date;
     atualizadoEm: Date;
     videos: PortfolioVideo[];
@@ -424,6 +440,7 @@ export class PortfoliosService {
       descricao: portfolio.descricao,
       linkPublico: portfolio.linkPublico,
       categoriaId: portfolio.categoriaId,
+      clienteId: portfolio.clienteId,
       // Capa explicita quando setada (ver cover-upload-url); senao cai no
       // posterUrl do primeiro item, mesmo comportamento de antes do campo existir.
       capaUrl: portfolio.capaUrl ?? videos[0]?.posterUrl ?? null,
@@ -440,6 +457,7 @@ export class PortfoliosService {
     linkPublico: string;
     capaUrl: string | null;
     categoriaId: string | null;
+    clienteId: string | null;
     criadoEm: Date;
     atualizadoEm: Date;
     videos: { posterUrl: string | null }[];
@@ -450,6 +468,7 @@ export class PortfoliosService {
       descricao: portfolio.descricao,
       linkPublico: portfolio.linkPublico,
       categoriaId: portfolio.categoriaId,
+      clienteId: portfolio.clienteId,
       capaUrl: portfolio.capaUrl ?? portfolio.videos[0]?.posterUrl ?? null,
       criadoEm: portfolio.criadoEm,
       atualizadoEm: portfolio.atualizadoEm,

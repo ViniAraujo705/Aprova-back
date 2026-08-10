@@ -246,7 +246,7 @@ Autenticado — roles `owner`, `editor`.
 | `DELETE` | `/clients/:id` | — | `{ "deleted": true }` |
 | `POST` | `/clients/:id/photo-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
 
-`Client`: `{ id, nome, email, descricao, fotoUrl, accountId, isExemplo }`.
+`Client`: `{ id, nome, email, descricao, fotoUrl, accountId, isExemplo, branding }`.
 `email` é opcional. `descricao` e `fotoUrl` alimentam o modo "Preview Reels"
 da galeria pública (ver [`GET /public/videos/:linkPublico`](#get-publicvideoslinkpublico)
 — campo `cliente`). Deletar um cliente apaga em cascata seus projetos e
@@ -263,6 +263,35 @@ direto no R2 → `PATCH /clients/:id` com `{ fotoUrl: publicUrl }`.
 > tocar no banco) — a validação de que o cliente pertence à conta do token
 > acontece só depois, no `PATCH /clients/:id` que efetivamente grava o
 > `fotoUrl`. Não depender do `:id` aqui pra nenhum tipo de autorização.
+
+### Marca própria do cliente (`/clients/:id/branding`)
+Autenticado — **somente `owner`** (mesma regra do branding da agência).
+Permite a agência configurar uma marca (logo + cor) por cliente específico —
+pensado pra agência white-label que revende a aprovação pro cliente final
+dela: quando configurada, essa marca sobrepõe campo a campo (só logo, só
+cor, ou os dois) o branding da agência (`/users/me/branding`) nos links
+públicos desse cliente. Requer plano com feature `whiteLabel` (mesma gate
+do branding da agência) — `403` se o plano não incluir.
+
+| Método | Rota | Body | Retorno |
+|---|---|---|---|
+| `POST` | `/clients/:id/branding/logo-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
+| `PATCH` | `/clients/:id/branding` | `{ logoUrl?, corDestaque? }` | `{ logoUrl, corDestaque }` |
+
+`contentType` aceito: `image/png`, `image/jpeg`, `image/webp`,
+`image/svg+xml`. Mesmo fluxo de presigned URL do branding da agência (`PUT`
+direto no R2), só que na pasta `client-branding`. `corDestaque` é hex
+(`#RGB` ou `#RRGGBB`). Em `PATCH`, `logoUrl: null` / `corDestaque: null`
+limpa o respectivo campo (o cliente volta a herdar o branding da agência);
+campo ausente no body deixa como está.
+
+`Client.branding` (exposto em `GET /clients`, `GET /clients/:id`,
+`PATCH /clients/:id`): `{ logoUrl, corDestaque } | null` — `null` quando o
+cliente não tem nenhuma marca própria configurada (caso mais comum). Esse
+mesmo objeto aparece em `cliente.branding` nas rotas públicas
+([Galeria pública do projeto](#get-publicprojectslinkpublico) e
+[Portfólio público](#get-publicportfolioslinkpublico), quando o álbum
+estiver etiquetado com o cliente — ver `Portfolio.clienteId`).
 
 ---
 
@@ -455,10 +484,10 @@ vínculo com projeto/cliente.
 | `GET` | `/portfolios` | — | `Portfolio[]` (sem `videos[]`, só resumo — ver abaixo) |
 | `GET` | `/portfolios/:id` | — | `Portfolio` completo, com `videos[]` |
 | `POST` | `/portfolios` | `{ nome, descricao?, categoriaId? }` | `Portfolio` criado (`linkPublico` gerado pelo backend) |
-| `PATCH` | `/portfolios/:id` | `{ nome?, descricao?, categoriaId?, capaUrl? }` | `Portfolio` atualizado |
+| `PATCH` | `/portfolios/:id` | `{ nome?, descricao?, categoriaId?, capaUrl?, clienteId? }` | `Portfolio` atualizado |
 | `DELETE` | `/portfolios/:id` | — | `{ "deleted": true }` |
 
-`Portfolio`: `{ id, nome, descricao, linkPublico, categoriaId, capaUrl, videos: PortfolioItem[], criadoEm, atualizadoEm }`.
+`Portfolio`: `{ id, nome, descricao, linkPublico, categoriaId, clienteId, capaUrl, videos: PortfolioItem[], criadoEm, atualizadoEm }`.
 O campo continua se chamando `videos` mesmo agora que a lista mistura vídeo
 e foto (nome já fechado com o frontend antes da foto entrar).
 
@@ -467,6 +496,16 @@ e foto (nome já fechado com o frontend antes da foto entrar).
 `null` = sem categoria (o álbum continua acessível pelo link direto, só não
 aparece no hub). `400` se `categoriaId` não existir ou não pertencer à
 conta do token.
+
+`clienteId` (só em `PATCH`, nunca em `POST` — todo álbum novo nasce sem
+cliente) etiqueta o álbum com a marca de um cliente específico (ver
+[Marca própria do cliente](#marca-própria-do-cliente-clientsidbranding)) —
+ex.: uma seleção de cases pra reapresentar a um prospect/cliente específico,
+com a marca dele. Não tem relação com dono/criador do portfólio nem
+restringe quem acessa o link público — é só sinalização de marca, que o
+`GET /public/portfolios/:linkPublico` usa pra decidir se mostra o branding
+do cliente. `null` remove a etiqueta; `400` se `clienteId` não existir ou
+não pertencer à conta do token.
 
 `capaUrl` pode ser setada explicitamente (ver `POST /portfolios/:id/cover-upload-url`
 abaixo) — quando `null`/nunca setada, cai automaticamente no `posterUrl` do
@@ -1232,7 +1271,7 @@ Resposta:
 ```json
 {
   "projeto": { "nome": "Campanha Verão" },
-  "cliente": { "nome": "Cliente A" },
+  "cliente": { "nome": "Cliente A", "branding": { "logoUrl": "https://... ou null", "corDestaque": "#d6336c ou null" } },
   "agencia": { "nome": "Agência Maria", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
   "videos": [
     {
@@ -1258,12 +1297,21 @@ substituído por uma versão mais nova (`POST /videos/:id/new-version`) — o
 front usa isso pra esconder a versão antiga da galeria. `404` se
 `:linkPublico` não corresponder a nenhum projeto.
 
+`cliente.branding` é a marca própria do cliente deste projeto (ver
+[Marca própria do cliente](#marca-própria-do-cliente-clientsidbranding)),
+`null` quando o cliente não tem nenhuma marca própria configurada (caso
+mais comum — cai só no branding da agência). Quando presente, o frontend
+faz o merge campo a campo: `cliente.branding.logoUrl ?? agencia.logoUrl`,
+`cliente.branding.corDestaque ?? agencia.corDestaque` (a marca do cliente
+pode setar só o logo, só a cor, ou os dois).
+
 ### Portfólio público
 
 ### `GET /public/portfolios/:linkPublico`
 Sem rate limit específico (usa o global de 120/min). Vitrine da agência (ver
 [Portfólios](#portfólios-portfolios)) — **nenhum** dado de cliente/projeto/
-status é exposto aqui, só o portfólio em si. `404` se `:linkPublico` não
+status é exposto aqui, só o portfólio em si (e, quando aplicável, o
+branding do cliente etiquetado — ver abaixo). `404` se `:linkPublico` não
 corresponder a nenhum portfólio.
 
 Resposta:
@@ -1271,6 +1319,7 @@ Resposta:
 {
   "nome": "Reels para redes sociais",
   "descricao": "Seleção de reels de curta duração... ou null",
+  "cliente": { "branding": { "logoUrl": "https://... ou null", "corDestaque": "#d6336c ou null" } },
   "agencia": { "nome": "Agencia Teste", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
   "videos": [
     { "id": "uuid", "tipoMidia": "video", "titulo": "Reel lançamento batom matte", "descricao": "... ou null", "urlStorage": "https://...", "posterUrl": "https://... ou null", "statusProcessamento": "pronto", "ordem": 0, "criadoEm": "..." },
@@ -1284,6 +1333,15 @@ autenticada) — sempre `null` quando `tipoMidia: "foto"`. O frontend abre
 cada item num lightbox — `<video>` nativo pra `tipoMidia: "video"`, a
 imagem em tela cheia pra `tipoMidia: "foto"` — sem navegar para
 `/v/:linkPublico` — a tela de aprovação do cliente não faz sentido aqui.
+
+`cliente` só aparece (com `branding` preenchido) quando o álbum foi
+etiquetado com um cliente (`Portfolio.clienteId`, ver `PATCH
+/portfolios/:id`) que por sua vez tem marca própria configurada; caso
+contrário vem `null`. Propositalmente **nunca** expõe `nome`/`id` do
+cliente — essa rota é a vitrine pública, e não deve revelar pra quem o
+álbum foi personalizado, só mudar a marca visual. Merge fica a cargo do
+frontend, igual à galeria pública do projeto: `cliente.branding.logoUrl ??
+agencia.logoUrl`, `cliente.branding.corDestaque ?? agencia.corDestaque`.
 
 ### Hub público do portfólio
 

@@ -38,7 +38,9 @@ export class PublicService {
       where: { linkPublico },
       select: {
         nome: true,
-        client: { select: { nome: true } },
+        client: {
+          select: { nome: true, logoUrl: true, corDestaque: true },
+        },
         account: {
           select: {
             nomeAgencia: true,
@@ -71,7 +73,13 @@ export class PublicService {
 
     return {
       projeto: { nome: project.nome },
-      cliente: { nome: project.client.nome },
+      // Marca propria do cliente (branding), quando configurada (ver
+      // ClientsService.updateBranding), sobrepoe a da agencia nos links
+      // publicos deste cliente - merge fica a cargo do frontend.
+      cliente: {
+        nome: project.client.nome,
+        branding: this.clientBranding(project.client),
+      },
       agencia: {
         nome: project.account.nomeAgencia,
         logoUrl: project.account.users[0]?.logoUrl ?? null,
@@ -102,6 +110,10 @@ export class PublicService {
       select: {
         nome: true,
         descricao: true,
+        // So o branding do cliente etiquetado (Portfolio.clienteId) - nome/id
+        // do cliente NUNCA sao expostos aqui (vitrine publica nao deve
+        // revelar pra quem o album foi personalizado, so a marca visual).
+        cliente: { select: { logoUrl: true, corDestaque: true } },
         account: {
           select: {
             nomeAgencia: true,
@@ -134,9 +146,16 @@ export class PublicService {
       throw new NotFoundException('Portfolio nao encontrado');
     }
 
+    const clienteBranding = portfolio.cliente
+      ? this.clientBranding(portfolio.cliente)
+      : null;
+
     return {
       nome: portfolio.nome,
       descricao: portfolio.descricao,
+      // Presente so quando o album foi etiquetado com um cliente (ver
+      // Portfolio.clienteId) que tem marca propria configurada - senao null.
+      cliente: clienteBranding ? { branding: clienteBranding } : null,
       agencia: {
         nome: portfolio.account.nomeAgencia,
         logoUrl: portfolio.account.users[0]?.logoUrl ?? null,
@@ -492,6 +511,20 @@ export class PublicService {
       select: { id: true, status: true, aprovadoEm: true, notaGeral: true },
     });
     return updated;
+  }
+
+  /**
+   * Marca propria do cliente ({ logoUrl, corDestaque }), ou null quando o
+   * cliente nao tem nenhum campo configurado - nesse caso o frontend cai
+   * de volta no branding da agencia (merge campo a campo).
+   */
+  private clientBranding(client: {
+    logoUrl: string | null;
+    corDestaque: string | null;
+  }) {
+    return client.logoUrl || client.corDestaque
+      ? { logoUrl: client.logoUrl, corDestaque: client.corDestaque }
+      : null;
   }
 
   /**
