@@ -85,23 +85,30 @@ enum NotificationType {
 // Conta = agencia. Agrupa os usuarios (owner + editores) e todos os
 // clientes/projetos compartilhados por eles.
 model Account {
-  id          String   @id @default(uuid())
-  nomeAgencia String   @map("nome_agencia")
-  plan        Plan     @default(free)
-  // Assinatura paga (Mercado Pago — Preapproval). Nulo ate a primeira
-  // assinatura ser criada/confirmada — ver src/billing/billing.service.ts.
-  mercadopagoSubscriptionId String? @unique @map("mercadopago_subscription_id")
-  criadoEm    DateTime @default(now()) @map("criado_em")
+  id                  String   @id @default(uuid())
+  nomeAgencia         String   @map("nome_agencia")
+  plan                Plan     @default(free)
+  // Documento do owner cobrado (CPF ou CNPJ, apenas digitos). Exigido pela
+  // Asaas para criar o Customer — coletado no primeiro checkout e
+  // reaproveitado nos seguintes. Ver src/billing/billing.service.ts.
+  cpfCnpj             String?  @map("cpf_cnpj")
+  // Assinatura paga (Asaas). asaasCustomerId identifica o Customer (criado
+  // uma vez, reaproveitado); asaasSubscriptionId identifica a Subscription
+  // ativa, nula ate a primeira assinatura ser confirmada pelo webhook — ver
+  // src/billing/billing.service.ts.
+  asaasCustomerId     String?  @map("asaas_customer_id")
+  asaasSubscriptionId String?  @unique @map("asaas_subscription_id")
+  criadoEm            DateTime @default(now()) @map("criado_em")
 
-  users           User[]
-  clients         Client[]
-  projects        Project[]
-  invites         Invite[]
-  ratingQuestions RatingQuestion[]
-  notifications   Notification[]
-  recordingEvents RecordingEvent[]
-  crewMembers     CrewMember[]
-  portfolios      Portfolio[]
+  users               User[]
+  clients             Client[]
+  projects            Project[]
+  invites             Invite[]
+  ratingQuestions     RatingQuestion[]
+  notifications       Notification[]
+  recordingEvents     RecordingEvent[]
+  crewMembers         CrewMember[]
+  portfolios          Portfolio[]
   portfolioCategories PortfolioCategory[]
   portfolioProfile    PortfolioProfile?
 
@@ -109,27 +116,27 @@ model Account {
 }
 
 model User {
-  id          String     @id @default(uuid())
-  accountId   String     @map("account_id")
-  nome        String
-  email       String     @unique
+  id                String     @id @default(uuid())
+  accountId         String     @map("account_id")
+  nome              String
+  email             String     @unique
   // Opcional: contas criadas via login social (Google/Apple) nao tem senha local.
-  senha       String?
+  senha             String?
   // Identificadores de login social. Uma conta pode ter senha local e/ou
   // um ou ambos vinculados (login por qualquer um deles cai no mesmo User).
-  googleId    String?    @unique @map("google_id")
-  appleId     String?    @unique @map("apple_id")
-  avatarUrl   String?    @map("avatar_url")
-  role        UserRole   @default(owner)
-  status      UserStatus @default(ativo)
+  googleId          String?    @unique @map("google_id")
+  appleId           String?    @unique @map("apple_id")
+  avatarUrl         String?    @map("avatar_url")
+  role              UserRole   @default(owner)
+  status            UserStatus @default(ativo)
   // White label da agencia: logo e cor de destaque (hex) exibidos na tela do cliente
-  logoUrl     String?    @map("logo_url")
-  corDestaque String?    @map("cor_destaque")
-  criadoEm    DateTime   @default(now()) @map("criado_em")
+  logoUrl           String?    @map("logo_url")
+  corDestaque       String?    @map("cor_destaque")
+  criadoEm          DateTime   @default(now()) @map("criado_em")
   // Null = ainda nao confirmou o email. Preenchido na hora da criacao para
   // contas via Google/Apple (o provider ja verificou), ou ao consumir um
   // EmailVerificationToken para contas via email/senha.
-  emailVerificadoEm DateTime? @map("email_verificado_em")
+  emailVerificadoEm DateTime?  @map("email_verificado_em")
 
   account                 Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   comments                Comment[]
@@ -140,6 +147,8 @@ model User {
   notifications           Notification[]
   sessions                Session[]
   recordingEvents         RecordingEvent[]
+  // Projetos aos quais este usuario (editor) foi atribuido
+  projectMemberships      ProjectMember[]
 
   @@index([accountId])
   @@map("users")
@@ -229,9 +238,9 @@ model RecordingEvent {
   observacoes String?
   criadoEm    DateTime  @default(now()) @map("criado_em")
 
-  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  cliente       Client?        @relation(fields: [clienteId], references: [id], onDelete: SetNull)
-  membro        User?          @relation(fields: [membroId], references: [id], onDelete: SetNull)
+  account       Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cliente       Client?              @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  membro        User?                @relation(fields: [membroId], references: [id], onDelete: SetNull)
   notifications Notification[]
   equipe        RecordingEventCrew[]
 
@@ -272,6 +281,23 @@ model RecordingEventCrew {
   @@map("recording_event_crew")
 }
 
+// Atribuicao de um editor a um projeto: owner sempre enxerga todos os
+// projetos da conta; editor so enxerga/acessa projetos onde ha uma linha
+// aqui (ver assertProjectAccess em src/common/project-access.util.ts).
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String   @map("project_id")
+  userId    String   @map("user_id")
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
 model Client {
   id        String  @id @default(uuid())
   nome      String
@@ -303,9 +329,10 @@ model Project {
   linkPublico String   @unique @default(uuid()) @map("link_publico")
   criadoEm    DateTime @default(now()) @map("criado_em")
 
-  client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  client  Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  account Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
   videos  Video[]
+  members ProjectMember[]
 
   @@index([clientId])
   @@index([accountId])
@@ -344,12 +371,12 @@ model Video {
   notaGeral           Int?                @map("nota_geral")
   criadoEm            DateTime            @default(now()) @map("criado_em")
 
-  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  videoPai          Video?         @relation("VersionHistory", fields: [videoPaiId], references: [id], onDelete: SetNull)
-  versoes           Video[]        @relation("VersionHistory")
+  project           Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  videoPai          Video?           @relation("VersionHistory", fields: [videoPaiId], references: [id], onDelete: SetNull)
+  versoes           Video[]          @relation("VersionHistory")
   comments          Comment[]
   ratings           Rating[]
-  editorResponsavel User?          @relation(fields: [editorResponsavelId], references: [id], onDelete: SetNull)
+  editorResponsavel User?            @relation(fields: [editorResponsavelId], references: [id], onDelete: SetNull)
   notifications     Notification[]
   portfolioVideos   PortfolioVideo[]
 

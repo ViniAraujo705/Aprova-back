@@ -6,18 +6,19 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  InvalidWebhookSignatureError,
-  WebhookSignatureValidator,
-} from 'mercadopago';
 import { Plan, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { MercadoPagoService } from './mercadopago/mercadopago.service';
+import { AsaasService } from './asaas/asaas.service';
 import {
   PLAN_BILLING,
   BillableCycle,
   BillablePlan,
 } from './plan-billing.config';
+
+interface AsaasWebhookPayment {
+  subscription?: string;
+  externalReference?: string;
+}
 
 @Injectable()
 export class BillingService {
@@ -25,36 +26,57 @@ export class BillingService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly mercadopago: MercadoPagoService,
+    private readonly asaas: AsaasService,
     private readonly config: ConfigService,
   ) {}
 
-  /** Cria a assinatura e devolve a URL (init_point) pra redirecionar o payer. */
+  /** Cria (ou reaproveita) o Customer, cria a assinatura e devolve a URL da fatura pra redirecionar o payer. */
   async createCheckout(
     accountId: string,
     plan: BillablePlan,
     cycle: BillableCycle,
+    cpfCnpj: string,
   ): Promise<{ url: string }> {
     const owner = await this.getOwner(accountId);
     const def = PLAN_BILLING[plan][cycle];
 
-    const subscription = await this.mercadopago.createPreapproval({
-      reason: def.reason,
-      payerEmail: owner.email,
-      externalReference: this.buildExternalReference(accountId, plan, cycle),
-      backUrl: this.buildCompletionUrl(),
-      transactionAmount: def.transactionAmount,
-      frequency: def.frequency,
-      frequencyType: def.frequencyType,
+    const account = await this.prisma.account.findUniqueOrThrow({
+      where: { id: accountId },
+      select: { asaasCustomerId: true },
     });
 
-    if (!subscription.init_point) {
-      throw new BadRequestException(
-        'Mercado Pago nao retornou uma URL de checkout',
-      );
+    let customerId = account.asaasCustomerId;
+    if (!customerId) {
+      const customer = await this.asaas.createCustomer({
+        name: owner.nome,
+        email: owner.email,
+        cpfCnpj,
+      });
+      customerId = customer.id;
     }
 
-    return { url: subscription.init_point };
+    const subscription = await this.asaas.createSubscription({
+      customerId,
+      value: def.value,
+      cycle: def.cycle,
+      nextDueDate: new Date().toISOString().slice(0, 10),
+      description: def.description,
+      externalReference: this.buildExternalReference(accountId, plan, cycle),
+    });
+
+    const invoiceUrl = await this.asaas.getFirstPaymentInvoiceUrl(
+      subscription.id,
+    );
+    if (!invoiceUrl) {
+      throw new BadRequestException('Asaas nao retornou uma URL de checkout');
+    }
+
+    await this.prisma.account.update({
+      where: { id: accountId },
+      data: { asaasCustomerId: customerId, cpfCnpj },
+    });
+
+    return { url: invoiceUrl };
   }
 
   /**
@@ -65,15 +87,15 @@ export class BillingService {
   async cancel(accountId: string): Promise<{ plan: Plan }> {
     const account = await this.prisma.account.findUniqueOrThrow({
       where: { id: accountId },
-      select: { mercadopagoSubscriptionId: true },
+      select: { asaasSubscriptionId: true },
     });
-    if (!account.mercadopagoSubscriptionId) {
+    if (!account.asaasSubscriptionId) {
       throw new BadRequestException(
         'Esta conta nao tem assinatura ativa para cancelar',
       );
     }
 
-    await this.mercadopago.cancelPreapproval(account.mercadopagoSubscriptionId);
+    await this.asaas.cancelSubscription(account.asaasSubscriptionId);
     await this.prisma.account.update({
       where: { id: accountId },
       data: { plan: Plan.free },
@@ -82,45 +104,44 @@ export class BillingService {
   }
 
   /**
-   * Valida a assinatura do webhook e processa a notificacao. O payload da
-   * Mercado Pago e magro (so tras o id do recurso) — busca o estado atual
-   * da assinatura na API antes de decidir o que fazer.
+   * Valida o token do webhook e processa a notificacao. Diferente da
+   * Mercado Pago, o payload da Asaas ja vem completo (nao precisa buscar o
+   * estado na API) e a autenticacao e um token simples, nao HMAC.
    */
   async processWebhook(
-    dataId: string | undefined,
-    xSignature: string | undefined,
-    xRequestId: string | undefined,
-    type: string | undefined,
+    token: string | undefined,
+    event: string | undefined,
+    payment: AsaasWebhookPayment | undefined,
   ): Promise<void> {
-    this.verifySignature(dataId, xSignature, xRequestId);
+    this.verifyWebhookToken(token);
 
-    if (type !== 'subscription_preapproval' && type !== 'preapproval') {
-      this.logger.log(`Evento de webhook ignorado: ${type}`);
-      return;
-    }
-    if (!dataId) {
-      this.logger.warn('Webhook de assinatura sem data.id, ignorando');
-      return;
-    }
-
-    const subscription = await this.mercadopago.getPreapproval(dataId);
-    const parsed = this.parseExternalReference(subscription.external_reference);
-    if (!parsed) {
-      this.logger.error(
-        `Webhook da assinatura ${dataId} sem external_reference reconhecivel`,
+    if (!payment?.subscription) {
+      this.logger.warn(
+        `Webhook Asaas sem payment.subscription, ignorando (event=${event})`,
       );
       return;
     }
 
-    if (subscription.status === 'authorized') {
+    const parsed = this.parseExternalReference(payment.externalReference);
+    if (!parsed) {
+      this.logger.error(
+        `Webhook da assinatura ${payment.subscription} sem externalReference reconhecivel`,
+      );
+      return;
+    }
+
+    if (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED') {
       await this.prisma.account.update({
         where: { id: parsed.accountId },
         data: {
           plan: parsed.plan,
-          mercadopagoSubscriptionId: dataId,
+          asaasSubscriptionId: payment.subscription,
         },
       });
-    } else if (subscription.status === 'cancelled') {
+    } else if (
+      event === 'SUBSCRIPTION_DELETED' ||
+      event === 'PAYMENT_DELETED'
+    ) {
       const account = await this.prisma.account.findUnique({
         where: { id: parsed.accountId },
         select: { plan: true },
@@ -131,32 +152,20 @@ export class BillingService {
           data: { plan: Plan.free },
         });
       }
+    } else {
+      this.logger.log(`Evento de webhook Asaas ignorado: ${event}`);
     }
   }
 
-  private verifySignature(
-    dataId: string | undefined,
-    xSignature: string | undefined,
-    xRequestId: string | undefined,
-  ): void {
-    const secret = this.config.get<string>('MERCADOPAGO_WEBHOOK_SECRET');
-    if (!secret) {
+  private verifyWebhookToken(token: string | undefined): void {
+    const expected = this.config.get<string>('ASAAS_WEBHOOK_TOKEN');
+    if (!expected) {
       throw new UnauthorizedException(
-        'Webhook da Mercado Pago nao configurado (falta MERCADOPAGO_WEBHOOK_SECRET)',
+        'Webhook da Asaas nao configurado (falta ASAAS_WEBHOOK_TOKEN)',
       );
     }
-    try {
-      WebhookSignatureValidator.validate({
-        xSignature,
-        xRequestId,
-        dataId,
-        secret,
-      });
-    } catch (err) {
-      if (err instanceof InvalidWebhookSignatureError) {
-        throw new UnauthorizedException('Assinatura do webhook invalida');
-      }
-      throw err;
+    if (!token || token !== expected) {
+      throw new UnauthorizedException('Token do webhook invalido');
     }
   }
 
@@ -190,15 +199,7 @@ export class BillingService {
     if (!externalReference) return null;
     const [accountId, plan, cycle] = externalReference.split(':');
     if (!accountId || (plan !== 'pro' && plan !== 'agencia')) return null;
-    if (cycle !== 'MONTHLY' && cycle !== 'ANNUALLY') return null;
+    if (cycle !== 'MONTHLY' && cycle !== 'YEARLY') return null;
     return { accountId, plan, cycle };
-  }
-
-  private buildCompletionUrl(): string {
-    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
-      .split(',')[0]
-      .trim();
-    const origin = base && base !== '*' ? base : 'http://localhost:5173';
-    return `${origin}/configuracoes/plano?status=sucesso`;
   }
 }

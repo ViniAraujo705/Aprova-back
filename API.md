@@ -273,12 +273,37 @@ Autenticado — roles `owner`, `editor`.
 |---|---|---|---|
 | `POST` | `/projects` | `{ nome, clientId }` | `Project` criado |
 | `GET` | `/projects` | — | `Project[]` (com `client: { id, nome }`, mais recente primeiro) |
-| `GET` | `/projects/:id` | — | `Project` (com `client: { id, nome }`) |
+| `GET` | `/projects/:id` | — | `Project` (com `client`, `members`) |
 | `PATCH` | `/projects/:id` | `{ nome?, clientId? }` | `Project` atualizado |
 | `DELETE` | `/projects/:id` | — | `{ "deleted": true }` |
+| `POST` | `/projects/:id/members/:memberId` | — | `ProjectMember[]` do projeto (owner) |
+| `DELETE` | `/projects/:id/members/:memberId` | — | `ProjectMember[]` do projeto (owner) |
 
 `clientId` deve ser UUID de um cliente da mesma conta (`400` caso contrário).
 Deletar um projeto apaga em cascata seus vídeos.
+
+### Escopo de acesso por editor (`ProjectMember`)
+
+`owner` sempre vê/acessa todos os projetos da conta. `editor` só vê/acessa
+projetos aos quais foi atribuído — a atribuição é a tabela `ProjectMember`,
+gerenciada pelos dois endpoints acima (só `owner` pode chamá-los).
+
+- `GET /projects`: para `editor`, retorna só os projetos onde ele foi
+  atribuído (sem paginação, igual antes).
+- `GET /projects/:id`, `GET /projects/:id/report`: `404` se um `editor`
+  tentar acessar um projeto ao qual não foi atribuído (mesmo padrão dos
+  demais 404 de "não encontrado" — não revela se o projeto existe).
+- `GET /projects/:id` inclui `members: [{ id, userId, user: { id, nome,
+  email } }]` — mesma sombra usada nas respostas de `POST`/`DELETE
+  /projects/:id/members/:memberId`.
+- `POST /projects/:id/members/:memberId`: idempotente (atribuir quem já é
+  membro não gera erro). `memberId` precisa ser `owner` ou `editor` da
+  mesma conta (`400` caso contrário).
+- Vídeos, comentários internos (canal `interno`) e o vídeo em si (criar,
+  mudar status, nova versão) seguem a mesma regra — um `editor` não
+  atribuído ao projeto recebe `404` também em `GET /videos?project_id=`,
+  `PATCH /videos/:id/status` etc. `GET /videos` sem `project_id` (todos os
+  projetos) já vem filtrado igual `GET /projects`.
 
 ---
 
@@ -322,6 +347,10 @@ Body: `{ "urlStorage": "...", "nomeArquivo": "..." }`
 Lista os vídeos de um projeto (mais recente primeiro por versão).
 Sem `project_id`, lista os vídeos de **todos os projetos da conta**
 autenticada (evita fan-out de uma request por projeto no dashboard).
+
+Escopo por `editor`: ver [seção "Escopo de acesso por editor"](#escopo-de-acesso-por-editor-projectmember)
+em Projetos — com `project_id`, `404` se o editor não estiver atribuído ao
+projeto; sem `project_id`, a lista já vem filtrada só com os projetos dele.
 
 **Paginado** (`page`/`limit` opcionais, default `page=1`/`limit=50`, `limit`
 com teto 100). Resposta:
@@ -693,6 +722,9 @@ desativa ou apaga livremente a partir daí.
 Autenticado — **somente `owner`**.
 
 ### `GET /team/performance`
+Exige `limits.teamPerformance` (plano `agencia`) — `403 Forbidden` nos
+demais planos, mesmo chamando a API direto (o bloqueio não é só de UI).
+
 Um item por editor (role `editor`) **com pelo menos um vídeo atribuído**
 (via [`PATCH /videos/:id/editor-responsavel`](#patch-videosideditor-responsavel)),
 independente do status desse vídeo.
@@ -924,6 +956,7 @@ Autenticado — `owner` ou `editor`.
     "whiteLabel": false,
     "pdfReports": false,
     "priorityQueue": false,
+    "teamPerformance": false,
     "storageGb": 5
   },
   "usage": {
@@ -956,6 +989,7 @@ free atingido..."). Isso acontece em:
 - `PATCH /users/me/branding` (quando envia `logoUrl` ou `corDestaque`) —
   exige `whiteLabel`
 - `GET /projects/:id/report` — exige `pdfReports`
+- `GET /team/performance` — exige `teamPerformance` (só plano `agencia`)
 
 Contas no plano `agencia` também têm prioridade na fila de processamento
 de vídeo (thumbnail/otimização) sobre os demais planos.
@@ -963,33 +997,36 @@ de vídeo (thumbnail/otimização) sobre os demais planos.
 ---
 
 ## Pagamento (`/billing`)
-Gateway: **Mercado Pago** (API de Assinaturas / Preapproval). Assinatura
-recorrente via cartão pra os planos `pro`/`agencia`. `free` não é
-assinável (é o padrão de toda conta nova).
+Gateway: **Asaas** (Customer + Subscription). Assinatura recorrente via
+fatura (cartão/PIX/boleto, escolhido pelo próprio pagador na tela da
+Asaas) pra os planos `pro`/`agencia`. `free` não é assinável (é o padrão
+de toda conta nova).
 
 | Método | Rota | Auth | Body | Retorno |
 |---|---|---|---|---|
-| `POST` | `/billing/checkout` | `owner` | `{ plan: "pro"\|"agencia", cycle: "MONTHLY"\|"ANNUALLY" }` | `{ url }` |
+| `POST` | `/billing/checkout` | `owner` | `{ plan: "pro"\|"agencia", cycle: "MONTHLY"\|"YEARLY", cpfCnpj: string }` | `{ url }` |
 | `POST` | `/billing/cancel` | `owner` | — | `{ plan: "free" }` |
-| `POST` | `/billing/webhooks/mercadopago` | **sem autenticação** (verificado por assinatura) | payload da Mercado Pago | `{ received: true }` |
+| `POST` | `/billing/webhooks/asaas` | **sem autenticação** (verificado por token) | payload da Asaas | `{ received: true }` |
 
-- `checkout`: cria a assinatura (preapproval) na Mercado Pago com o email
-  do owner da conta e devolve `url` (`init_point`) — o frontend deve
-  **redirecionar** o usuário pra essa URL, a própria tela hospedada da
-  Mercado Pago onde ele autoriza a cobrança recorrente com o cartão dele.
-  `502` se a Mercado Pago estiver fora do ar ou o access token não
-  estiver configurado.
-- `cancel`: cancela a assinatura ativa na Mercado Pago e já rebaixa a
-  conta pra `free` na mesma hora (sem período de graça). `400` se a
-  conta não tem assinatura ativa.
-- `webhooks/mercadopago`: endpoint interno, chamado pela Mercado Pago
-  quando o status da assinatura muda — o frontend nunca chama isso
-  diretamente. O payload da Mercado Pago só traz o id do recurso; o
-  backend busca o estado atual da assinatura na API deles antes de
-  decidir. Quando o status vira `authorized`, `Account.plan` é atualizado
-  automaticamente; `GET /plans/me` reflete a mudança assim que o webhook
-  é processado. `401` se a assinatura do webhook (`X-Signature` +
-  `X-Request-Id` + `data.id`) não bater.
+- `checkout`: cria (ou reaproveita) o Customer na Asaas com o email do
+  owner da conta + `cpfCnpj` (só dígitos, 11 = CPF ou 14 = CNPJ,
+  obrigatório em toda chamada — a Asaas exige documento pra criar o
+  Customer), cria a Subscription e devolve `url` (`invoiceUrl` da
+  primeira fatura) — o frontend deve **redirecionar** o usuário pra essa
+  URL, a própria tela hospedada da Asaas onde ele escolhe a forma de
+  pagamento e autoriza a cobrança recorrente. `502` se a Asaas estiver
+  fora do ar ou a API key não estiver configurada.
+- `cancel`: cancela a assinatura ativa na Asaas e já rebaixa a conta pra
+  `free` na mesma hora (sem período de graça). `400` se a conta não tem
+  assinatura ativa.
+- `webhooks/asaas`: endpoint interno, chamado pela Asaas quando o status
+  do pagamento muda — o frontend nunca chama isso diretamente. Ao
+  contrário da Mercado Pago, o payload já vem completo (não precisa
+  buscar o estado na API deles). Nos eventos `PAYMENT_CONFIRMED`/
+  `PAYMENT_RECEIVED`, `Account.plan` é atualizado automaticamente;
+  `GET /plans/me` reflete a mudança assim que o webhook é processado.
+  `401` se o header `asaas-access-token` não bater com o token
+  configurado no registro do webhook.
 
 ---
 
@@ -1410,7 +1447,8 @@ Autenticado — **somente role `admin`**.
 | `GET` | `/admin/users` | — | lista de agências (owners) com contagens |
 | `PATCH` | `/admin/users/:id/status` | `{ status: "ativo" \| "suspenso" }` | usuário atualizado |
 | `GET` | `/admin/metrics` | — | métricas gerais da plataforma |
-| `GET` | `/admin/videos/errors` | — | vídeos com `status = erro` |
+| `GET` | `/admin/videos/errors` | — | vídeos com `statusProcessamento = erro` |
+| `POST` | `/admin/videos/:id/reprocess` | — | reenfileira thumbnail + versão otimizada |
 | `PATCH` | `/admin/accounts/:id/plan` | `{ plan: "free" \| "pro" \| "agencia" }` | `{ id, nomeAgencia, plan }` |
 
 `GET /admin/users` → cada item:
@@ -1422,15 +1460,32 @@ Autenticado — **somente role `admin`**.
 ```json
 {
   "users": { "total": 40, "profissionais": 30, "admins": 1, "suspensos": 2 },
-  "videos": { "total": 500, "porStatus": { "pendente": 100, "aprovado": 350, "ajuste": 40, "erro": 10 } },
+  "videos": {
+    "total": 500,
+    "porStatus": { "pendente": 100, "aprovado": 350, "ajuste": 40, "erro": 10 },
+    "porProcessamento": { "processando": 3, "pronto": 490, "erro": 7 }
+  },
   "storage": { "estimadoBytes": 26214400000, "estimadoGb": 24.41, "observacao": "Estimativa por contagem (~50MB/video); tamanho real nao e armazenado." }
 }
 ```
 (storage é estimado — o tamanho real do arquivo não é persistido, já que o
 upload vai direto pro R2)
 
-`GET /admin/videos/errors` → cada item inclui `project.account.users[0]`
-(o owner responsável, para contato).
+> `porStatus` é o workflow de aprovação do cliente (pendente/aprovado/ajuste);
+> `porProcessamento` é o pipeline de thumbnail/otimização (processando/pronto/erro).
+> São campos independentes do `Video` — um vídeo `porStatus.pendente` pode
+> estar `porProcessamento.erro` ao mesmo tempo.
+
+`GET /admin/videos/errors` → vídeos com falha no processamento (thumbnail/
+versão otimizada não gerados). Cada item inclui `project.account.users[0]`
+(o owner responsável, para contato) e `statusProcessamento`.
+
+`POST /admin/videos/:id/reprocess` → reenfileira o processamento de um
+vídeo travado em `statusProcessamento = erro` (reseta para `processando`
+e dispara o job de novo). `409` se o vídeo não estiver em erro no momento;
+`404` se o vídeo não existe. Resposta: `{ "id", "statusProcessamento": "processando" }`.
+O original em `urlStorage` nunca é afetado — apenas thumbnail/otimizado são
+regenerados.
 
 `PATCH /admin/accounts/:id/plan` → `:id` é o `Account.id` (não o id do
 usuário/owner — ver `account.id` em `GET /admin/users`). Troca manual de

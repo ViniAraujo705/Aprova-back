@@ -1,49 +1,43 @@
 import { Plan } from '@prisma/client';
 
-export type BillableCycle = 'MONTHLY' | 'ANNUALLY';
+export type BillableCycle = 'MONTHLY' | 'YEARLY';
 export type BillablePlan = Extract<Plan, 'pro' | 'agencia'>;
 
 export interface PlanBillingDef {
-  reason: string;
-  transactionAmount: number;
-  // Mercado Pago so aceita "days" ou "months" (nao existe "years"); anual
-  // cobra o valor cheio a cada 12 meses.
-  frequency: number;
-  frequencyType: 'months';
+  description: string;
+  value: number;
+  cycle: BillableCycle;
 }
 
 // Precos aprovados (ver memoria do projeto): Pro R$59/mes ou R$588/ano;
-// Agencia R$149/mes ou R$1.490/ano.
+// Agencia R$169/mes ou R$1.690/ano. Asaas suporta ciclo anual nativamente
+// (cycle: YEARLY), diferente da Mercado Pago que so aceitava days/months.
 export const PLAN_BILLING: Record<
   BillablePlan,
   Record<BillableCycle, PlanBillingDef>
 > = {
   pro: {
     MONTHLY: {
-      reason: 'Vistoow Pro (mensal)',
-      transactionAmount: 59,
-      frequency: 1,
-      frequencyType: 'months',
+      description: 'Vistoow Pro (mensal)',
+      value: 59,
+      cycle: 'MONTHLY',
     },
-    ANNUALLY: {
-      reason: 'Vistoow Pro (anual)',
-      transactionAmount: 588,
-      frequency: 12,
-      frequencyType: 'months',
+    YEARLY: {
+      description: 'Vistoow Pro (anual)',
+      value: 588,
+      cycle: 'YEARLY',
     },
   },
   agencia: {
     MONTHLY: {
-      reason: 'Vistoow Agencia (mensal)',
-      transactionAmount: 149,
-      frequency: 1,
-      frequencyType: 'months',
+      description: 'Vistoow Agencia (mensal)',
+      value: 169,
+      cycle: 'MONTHLY',
     },
-    ANNUALLY: {
-      reason: 'Vistoow Agencia (anual)',
-      transactionAmount: 1490,
-      frequency: 12,
-      frequencyType: 'months',
+    YEARLY: {
+      description: 'Vistoow Agencia (anual)',
+      value: 1690,
+      cycle: 'YEARLY',
     },
   },
 };

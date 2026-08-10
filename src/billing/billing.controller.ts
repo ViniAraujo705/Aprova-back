@@ -5,7 +5,6 @@ import {
   HttpStatus,
   Headers,
   Post,
-  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
@@ -37,6 +36,7 @@ export class BillingController {
       user.accountId,
       dto.plan,
       dto.cycle,
+      dto.cpfCnpj,
     );
   }
 
@@ -49,27 +49,23 @@ export class BillingController {
   }
 
   /**
-   * Chamado pela Mercado Pago (sem autenticacao JWT — autenticidade vem da
-   * verificacao de assinatura HMAC via query string + headers, dentro do
-   * service). O payload da Mercado Pago e magro (so o id do recurso); o
-   * estado real da assinatura e buscado na API dentro do service.
+   * Chamado pela Asaas (sem autenticacao JWT — autenticidade vem do token
+   * configurado ao registrar o webhook no painel Asaas, ecoado de volta no
+   * header asaas-access-token). O payload ja vem completo, diferente do
+   * payload magro da Mercado Pago.
    */
-  @Post('webhooks/mercadopago')
+  @Post('webhooks/asaas')
   @HttpCode(HttpStatus.OK)
   @ApiExcludeEndpoint()
   async handleWebhook(
-    @Query('data.id') dataId: string | undefined,
-    @Query('type') queryType: string | undefined,
-    @Headers('x-signature') xSignature: string | undefined,
-    @Headers('x-request-id') xRequestId: string | undefined,
-    @Body() body: { type?: string; data?: { id?: string } },
+    @Headers('asaas-access-token') token: string | undefined,
+    @Body()
+    body: {
+      event?: string;
+      payment?: { subscription?: string; externalReference?: string };
+    },
   ) {
-    await this.billingService.processWebhook(
-      dataId ?? body?.data?.id,
-      xSignature,
-      xRequestId,
-      queryType ?? body?.type,
-    );
+    await this.billingService.processWebhook(token, body?.event, body?.payment);
     return { received: true };
   }
 }
