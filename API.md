@@ -1460,7 +1460,7 @@ Resposta:
       "id": "uuid",
       "nome": "Casamento",
       "portfolios": [
-        { "id": "uuid", "nome": "Reels para redes sociais", "descricao": "... ou null", "link": "reels-de-verao", "capaUrl": "https://... ou null" }
+        { "id": "uuid", "nome": "Reels para redes sociais", "descricao": "... ou null", "link": "reels-de-verao", "capaUrl": "https://... ou null", "tipoMidiaPredominante": "video" }
       ]
     }
   ]
@@ -1472,6 +1472,12 @@ mais recente primeiro. Cada item de `portfolios[]` é um resumo do álbum
 pra `GET /public/portfolios/:linkPublico` a partir dele pra abrir o álbum
 completo. `capaUrl` já resolve o mesmo fallback da versão autenticada
 (posterUrl do primeiro item quando nenhuma capa explícita foi setada).
+
+`tipoMidiaPredominante` (`"video"` | `"foto"`) é o tipo de mídia majoritário
+entre os itens do álbum (maioria simples por contagem de `tipoMidia`) — em
+caso de empate (incluindo álbum sem nenhum item, o que não deveria
+acontecer aqui já que álbuns vazios são filtrados), cai para `"video"`.
+Serve pro filtro categoria → foto/vídeo → álbuns do hub público.
 
 Só aparecem categorias com **pelo menos um álbum com item** — categoria
 vazia (sem álbuns, ou só com álbuns ainda sem nenhum vídeo/foto) é filtrada

@@ -8,6 +8,7 @@ import {
   CommentChannel,
   EtapaProducao,
   NotificationType,
+  PortfolioMediaType,
   UserRole,
   VideoStatus,
 } from '@prisma/client';
@@ -209,10 +210,13 @@ export class PublicService {
                     descricao: true,
                     linkPublico: true,
                     capaUrl: true,
+                    // Sem `take` aqui: alem do fallback de capa (primeiro
+                    // item por ordem), precisamos de tipoMidia de todos os
+                    // itens pra calcular o tipo de midia predominante do
+                    // album (ver tipoMidiaPredominante abaixo).
                     videos: {
                       orderBy: { ordem: 'asc' },
-                      take: 1,
-                      select: { posterUrl: true },
+                      select: { tipoMidia: true, posterUrl: true },
                     },
                     _count: { select: { videos: true } },
                   },
@@ -241,6 +245,7 @@ export class PublicService {
             descricao: p.descricao,
             link: p.linkPublico,
             capaUrl: p.capaUrl ?? p.videos[0]?.posterUrl ?? null,
+            tipoMidiaPredominante: this.predominantMediaType(p.videos),
           })),
       }))
       // Categoria sem nenhum album (apos o filtro acima) nao aparece.
@@ -255,6 +260,23 @@ export class PublicService {
       },
       categorias,
     };
+  }
+
+  /**
+   * Maioria simples de tipoMidia entre os itens do album; empate (ou album
+   * vazio) cai pra "video" (padrao pedido pelo frontend pro filtro
+   * foto/video do hub publico).
+   */
+  private predominantMediaType(
+    items: { tipoMidia: PortfolioMediaType }[],
+  ): PortfolioMediaType {
+    const fotoCount = items.filter(
+      (item) => item.tipoMidia === PortfolioMediaType.foto,
+    ).length;
+    const videoCount = items.length - fotoCount;
+    return fotoCount > videoCount
+      ? PortfolioMediaType.foto
+      : PortfolioMediaType.video;
   }
 
   /**
