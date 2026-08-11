@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { createWithUniqueRandomField } from '../common/short-id.util';
+import { createWithUniqueSlugField } from '../common/short-id.util';
 import { UpdatePortfolioProfileDto } from './dto/update-portfolio-profile.dto';
 import { PortfolioProfilePhotoUploadUrlDto } from './dto/photo-upload-url.dto';
 
@@ -30,11 +30,17 @@ export class PortfolioProfileService {
     }
 
     try {
-      return await createWithUniqueRandomField('linkHub', (linkHub) =>
-        this.prisma.portfolioProfile.create({
-          data: { accountId, linkHub },
-          select: PROFILE_SELECT,
-        }),
+      const hubBaseName = await this.resolveHubBaseName(accountId);
+      return await createWithUniqueSlugField(
+        hubBaseName,
+        'linkHub',
+        (linkHub) =>
+          this.prisma.portfolioProfile.create({
+            data: { accountId, linkHub },
+            select: PROFILE_SELECT,
+          }),
+        5,
+        'hub',
       );
     } catch (err) {
       // Corrida entre duas leituras concorrentes (ex.: duas abas abrindo o
@@ -51,6 +57,27 @@ export class PortfolioProfileService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Base do slug do linkHub: nome da agencia, ou o nome do owner se a
+   * agencia nao tiver nome configurado (nomeAgencia vazio/so espacos).
+   */
+  private async resolveHubBaseName(accountId: string): Promise<string> {
+    const account = await this.prisma.account.findUniqueOrThrow({
+      where: { id: accountId },
+      select: {
+        nomeAgencia: true,
+        users: {
+          where: { role: UserRole.owner },
+          select: { nome: true },
+          orderBy: { criadoEm: 'asc' },
+          take: 1,
+        },
+      },
+    });
+    const agencyName = account.nomeAgencia.trim();
+    return agencyName || (account.users[0]?.nome ?? '');
   }
 
   async update(accountId: string, dto: UpdatePortfolioProfileDto) {

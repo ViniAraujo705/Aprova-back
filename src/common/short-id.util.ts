@@ -77,27 +77,38 @@ export function slugify(input: string, fallback = 'portfolio'): string {
 }
 
 /**
- * Como `createWithUniqueLinkPublico`, mas usa um slug do `nome` em vez de
+ * Como `createWithUniqueRandomField`, mas usa um slug do `nome` em vez de
  * um id aleatorio - link mais curto e legivel (ex.: /p/reels-de-verao em
  * vez de /p/aB3xQ9kZ2m). Em caso de colisao, tenta de novo com um sufixo
- * curto aleatorio (`reels-de-verao-a1b2`).
+ * curto aleatorio (`reels-de-verao-a1b2`). Generico o suficiente para
+ * qualquer campo unico baseado em slug (linkPublico, linkHub, ...).
  */
-export async function createWithUniqueSlugLinkPublico<T>(
+export async function createWithUniqueSlugField<T>(
   nome: string,
-  createFn: (linkPublico: string) => Promise<T>,
+  field: string,
+  createFn: (slug: string) => Promise<T>,
   maxAttempts = 5,
+  fallback?: string,
 ): Promise<T> {
-  const base = slugify(nome);
+  const base = slugify(nome, fallback);
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const candidate =
       attempt === 1 ? base : `${base}-${generateShortId(4).toLowerCase()}`;
     try {
       return await createFn(candidate);
     } catch (err) {
-      if (!isFieldCollision(err, 'linkPublico') || attempt === maxAttempts) {
+      if (!isFieldCollision(err, field) || attempt === maxAttempts) {
         throw err;
       }
     }
   }
-  throw new Error('Nao foi possivel gerar um linkPublico unico');
+  throw new Error(`Nao foi possivel gerar um ${field} unico`);
+}
+
+export function createWithUniqueSlugLinkPublico<T>(
+  nome: string,
+  createFn: (linkPublico: string) => Promise<T>,
+  maxAttempts = 5,
+): Promise<T> {
+  return createWithUniqueSlugField(nome, 'linkPublico', createFn, maxAttempts);
 }
