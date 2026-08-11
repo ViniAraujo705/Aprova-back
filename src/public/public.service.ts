@@ -6,6 +6,7 @@ import {
 import {
   CommentAuthorType,
   CommentChannel,
+  EtapaProducao,
   NotificationType,
   UserRole,
   VideoStatus,
@@ -492,23 +493,41 @@ export class PublicService {
     });
   }
 
+  // Decisao do cliente na tela publica tambem avanca a etapa de producao
+  // interna (board Kanban), pra equipe nao precisar arrastar o card na mao
+  // toda vez que o cliente aprova ou pede ajuste.
+  private static readonly ETAPA_BY_STATUS: Partial<
+    Record<VideoStatus, EtapaProducao>
+  > = {
+    [VideoStatus.aprovado]: EtapaProducao.aprovado,
+    [VideoStatus.ajuste]: EtapaProducao.ajustes,
+  };
+
   private async setStatus(
     linkPublico: string,
     status: VideoStatus,
     notaGeral?: number,
   ) {
     const video = await this.resolveVideo(linkPublico);
+    const etapaProducao = PublicService.ETAPA_BY_STATUS[status];
     const updated = await this.prisma.video.update({
       where: { id: video.id },
       data: {
         status,
+        ...(etapaProducao ? { etapaProducao } : {}),
         // Carimba o momento da aprovacao (usado nas metricas de tempo
         // medio de aprovacao). Nao mexe em outras transicoes.
         ...(status === VideoStatus.aprovado
           ? { aprovadoEm: new Date(), ...(notaGeral ? { notaGeral } : {}) }
           : {}),
       },
-      select: { id: true, status: true, aprovadoEm: true, notaGeral: true },
+      select: {
+        id: true,
+        status: true,
+        aprovadoEm: true,
+        notaGeral: true,
+        etapaProducao: true,
+      },
     });
     return updated;
   }

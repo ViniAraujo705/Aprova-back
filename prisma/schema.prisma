@@ -38,6 +38,20 @@ enum VideoStatus {
   erro
 }
 
+// Etapa de producao interna da agencia (board Kanban) - independente do
+// VideoStatus, que reflete a decisao do cliente na tela publica. Ex: um
+// video pode estar "em_edicao" antes mesmo de ir pro cliente, ou "entregue"
+// depois de aprovado. Ver VideosService.updateEtapa / PATCH /videos/:id/etapa.
+enum EtapaProducao {
+  planejado
+  producao
+  edicao
+  aguardando_aprovacao
+  ajustes
+  aprovado
+  entregue
+}
+
 enum ProcessamentoStatus {
   processando
   pronto
@@ -378,6 +392,8 @@ model Video {
   // Nota geral (1-5) dada pelo cliente no momento da aprovacao. Alimenta o
   // desempenho da equipe (media por editor responsavel).
   notaGeral           Int?                @map("nota_geral")
+  // Etapa de producao interna (board Kanban) - ver EtapaProducao.
+  etapaProducao       EtapaProducao       @default(planejado) @map("etapa_producao")
   criadoEm            DateTime            @default(now()) @map("criado_em")
 
   project           Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)

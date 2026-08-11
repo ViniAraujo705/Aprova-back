@@ -6,7 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Plan, Prisma, UserRole, VideoStatus } from '@prisma/client';
+import {
+  EtapaProducao,
+  Plan,
+  Prisma,
+  UserRole,
+  VideoStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { createWithUniqueLinkPublico } from '../common/short-id.util';
 import { StorageService } from '../storage/storage.service';
@@ -175,6 +181,22 @@ export class VideosService {
         status,
         ...(status === VideoStatus.aprovado ? { aprovadoEm: new Date() } : {}),
       },
+    });
+  }
+
+  /**
+   * Etapa de producao interna do board Kanban - independente do
+   * VideoStatus (decisao do cliente na tela publica).
+   */
+  async updateEtapa(
+    accountId: string,
+    id: string,
+    etapa: EtapaProducao,
+  ) {
+    await this.getOwnedVideo(accountId, id);
+    return this.prisma.video.update({
+      where: { id },
+      data: { etapaProducao: etapa },
     });
   }
 

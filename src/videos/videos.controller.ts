@@ -26,6 +26,7 @@ import { UploadUrlDto } from './dto/upload-url.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { NewVersionDto } from './dto/new-version.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { UpdateEtapaDto } from './dto/update-etapa.dto';
 import { UpdateDeadlineDto } from './dto/update-deadline.dto';
 import { UpdateTituloDto } from './dto/update-titulo.dto';
 import { UpdateEditorResponsavelDto } from './dto/update-editor-responsavel.dto';
@@ -87,6 +88,19 @@ export class VideosController {
     @Body() dto: UpdateStatusDto,
   ) {
     return this.videosService.updateStatus(user.accountId, id, dto.status);
+  }
+
+  @Patch(':id/etapa')
+  @ApiOperation({
+    summary:
+      'Atualiza a etapa de producao interna (board Kanban) - independente do status de aprovacao do cliente.',
+  })
+  updateEtapa(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateEtapaDto,
+  ) {
+    return this.videosService.updateEtapa(user.accountId, id, dto.etapa);
   }
 
   @Patch(':id/deadline')
