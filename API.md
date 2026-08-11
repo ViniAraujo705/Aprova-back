@@ -12,6 +12,7 @@ enviar e o que esperar de volta. Revisado a partir do código-fonte em
 - [Clientes](#clientes-clients)
 - [Projetos](#projetos-projects)
 - [Vídeos](#vídeos-videos)
+- [Board Kanban (demandas)](#board-kanban-demandas)
 - [Portfólios](#portfólios-portfolios)
 - [Portfólio: perfil e categorias](#portfólio-perfil-e-categorias-portfolio-profile-portfolio-categories)
 - [Comentários (canais autenticados)](#comentários-canais-autenticados)
@@ -478,6 +479,66 @@ não deve ser assumido pelo frontend (ver nota na seção de acesso público).
 `notaGeral` (1–5) só é
 preenchida quando o cliente aprova informando uma nota geral (ver
 [`POST /public/videos/:linkPublico/approve`](#post-public-videoslinkpublicoapprove)).
+
+---
+
+## Board Kanban (`/demandas`)
+Autenticado — roles `owner`, `editor`.
+
+Cobre a metade do board Kanban que **não** é vídeo: cards genéricos de
+projeto/campanha/gravação criados direto no quadro, sem vínculo com nenhum
+`Video`. Reaproveita o mesmo enum de etapa de `Video.etapaProducao`
+(`EtapaProducao`) — o board trata os dois tipos de card igual. Escopo
+direto por conta (como `/recording-events`/`/crew`), não passa por
+projeto — todo `owner`/`editor` da conta vê todas as demandas.
+
+### `POST /demandas`
+Body: `{ "titulo": "string", "tipo": "projeto" | "campanha" | "gravacao" | "demanda", "clienteId"?: "uuid", "responsavelId"?: "uuid", "prazo"?: "2026-08-20", "etapa"?: "planejado" }`
+`etapa` default `planejado` se omitida. `clienteId`/`responsavelId`, quando
+enviados, precisam pertencer à mesma conta (`400` caso contrário).
+
+### `GET /demandas`
+Lista as demandas da conta autenticada (sem paginação/filtro — o board
+filtra por tipo/cliente no próprio frontend).
+
+### `PATCH /demandas/:id`
+Edita `titulo`/`tipo`/`clienteId`/`responsavelId`/`prazo`. Mesmo body do
+`POST`, todos os campos opcionais (omitir mantém o valor atual; enviar
+`null` em `clienteId`/`responsavelId`/`prazo` remove a atribuição). **Não**
+move de etapa — use a rota abaixo.
+
+### `PATCH /demandas/:id/etapa`
+Body: `{ "etapa": "planejado" | "producao" | "edicao" | "aguardando_aprovacao" | "ajustes" | "aprovado" | "entregue" }`
+Mesmo shape de [`PATCH /videos/:id/etapa`](#patch-videosidetapa). Diferente
+dos cards de vídeo, aqui não existe sincronia automática — a equipe sempre
+arrasta o card manualmente (não há decisão de cliente associada a uma
+demanda genérica).
+
+### `DELETE /demandas/:id`
+Exclui a demanda. Resposta: `{ "deleted": true }`.
+
+**Shape da `Demanda`** (retornado por `POST`/`PATCH`/`GET`):
+```json
+{
+  "id": "uuid",
+  "titulo": "Campanha de lançamento",
+  "tipo": "campanha",
+  "clienteId": null,
+  "responsavelId": null,
+  "prazo": null,
+  "etapa": "planejado",
+  "videoId": null,
+  "criadoEm": "2026-08-10T12:00:00.000Z",
+  "atualizadoEm": "2026-08-10T12:00:00.000Z",
+  "clienteNome": null,
+  "responsavelNome": null
+}
+```
+`clienteNome`/`responsavelNome` vêm resolvidos via join (mesmo padrão de
+`clienteNome`/`membroNome` em [Calendário de gravações](#calendário-de-gravações-recording-events)) — o frontend não precisa
+buscar cliente/usuário à parte pra renderizar o card. `videoId` existe no
+schema pra uma futura demanda "virar" ou referenciar um vídeo específico,
+mas **nenhuma rota atual permite setá-lo** — hoje sempre vem `null`.
 
 ---
 

@@ -125,6 +125,7 @@ model Account {
   portfolios          Portfolio[]
   portfolioCategories PortfolioCategory[]
   portfolioProfile    PortfolioProfile?
+  demandas            Demanda[]
 
   @@map("accounts")
 }
@@ -163,6 +164,8 @@ model User {
   recordingEvents         RecordingEvent[]
   // Projetos aos quais este usuario (editor) foi atribuido
   projectMemberships      ProjectMember[]
+  // Demandas (cards do board Kanban) atribuidas a este usuario
+  demandasResponsavel     Demanda[]
 
   @@index([accountId])
   @@map("users")
@@ -336,6 +339,7 @@ model Client {
   // Albuns de portfolio etiquetados com a marca deste cliente (ver
   // Portfolio.clienteId) - nao implica posse/restricao de acesso, so marca.
   portfolios      Portfolio[]
+  demandas        Demanda[]
 
   @@index([accountId])
   @@map("clients")
@@ -404,11 +408,50 @@ model Video {
   editorResponsavel User?            @relation(fields: [editorResponsavelId], references: [id], onDelete: SetNull)
   notifications     Notification[]
   portfolioVideos   PortfolioVideo[]
+  demandas          Demanda[]
 
   @@index([projectId])
   @@index([videoPaiId])
   @@index([editorResponsavelId])
   @@map("videos")
+}
+
+enum DemandaTipo {
+  projeto
+  campanha
+  gravacao
+  demanda
+}
+
+// Card generico do board Kanban (etapa de producao), sem estar ligado a
+// nenhum Video - cobre a outra metade do quadro (planejamento/campanha/
+// gravacao) que o card de Video ja nao cobre. Escopo direto por conta
+// (mesmo padrao de RecordingEvent/CrewMember), nao passa por Project.
+model Demanda {
+  id            String        @id @default(uuid())
+  accountId     String        @map("account_id")
+  titulo        String
+  tipo          DemandaTipo
+  clienteId     String?       @map("cliente_id")
+  responsavelId String?       @map("responsavel_id")
+  prazo         DateTime?
+  etapa         EtapaProducao @default(planejado)
+  // Referencia opcional a um Video - nao usado hoje, deixa a porta aberta
+  // pra uma demanda "virar" ou apontar pra um video especifico no futuro.
+  videoId       String?       @map("video_id")
+  criadoEm      DateTime      @default(now()) @map("criado_em")
+  atualizadoEm  DateTime      @updatedAt @map("atualizado_em")
+
+  account     Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cliente     Client? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  responsavel User?   @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
+  video       Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([clienteId])
+  @@index([responsavelId])
+  @@index([videoId])
+  @@map("demandas")
 }
 
 // Vitrine da agencia: colecao curada manualmente pelo owner, distinta da

@@ -29,6 +29,7 @@ import { PlansModule } from './plans/plans.module';
 import { BillingModule } from './billing/billing.module';
 import { RecordingEventsModule } from './recording-events/recording-events.module';
 import { CrewModule } from './crew/crew.module';
+import { DemandasModule } from './demandas/demandas.module';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { CrewModule } from './crew/crew.module';
     BillingModule,
     RecordingEventsModule,
     CrewModule,
+    DemandasModule,
   ],
   providers: [
     {
