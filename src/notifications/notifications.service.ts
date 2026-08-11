@@ -145,12 +145,20 @@ export class NotificationsService {
   }
 
   /**
-   * Cron: lembra o(s) owner(s) de uma gravacao (RecordingEvent) que comeca
-   * em ate 24h - nunca os editors (pedido explicito do frontend). So
-   * dispara uma vez por evento: a query ja exclui eventos que tenham uma
-   * notificacao lembrete_gravacao (relacao `notifications`), e o unique
-   * index (recording_event_id, user_id, type) + skipDuplicates cobrem a
-   * corrida entre replicas/execucoes concorrentes do cron.
+   * Cron: lembra de uma gravacao (RecordingEvent) que comeca em ate 24h.
+   * Destinatarios: todo owner da conta (sempre) + cada CrewMember escalado
+   * no evento que tenha userId (a pessoa vinculada a uma conta real, seja
+   * owner ou editor) - freelancers sem conta (userId null) nao recebem
+   * nada, nao ha pra quem notificar.
+   *
+   * Nao filtra eventos que ja tem alguma notificacao (ao contrario da
+   * versao anterior): a equipe pode ganhar gente nova (POST/PATCH
+   * equipeIds) depois que os owners ja foram notificados, e essa pessoa
+   * ainda precisa receber o lembrete quando a janela de 24h chegar. O
+   * unique index (recording_event_id, user_id, type) + skipDuplicates
+   * garantem que ninguem seja notificado duas vezes pelo mesmo evento,
+   * mesmo com essa query rodando a cada 10min e entre replicas/execucoes
+   * concorrentes do cron.
    */
   @Cron(CronExpression.EVERY_10_MINUTES)
   async sendRecordingReminders(): Promise<void> {
@@ -159,11 +167,12 @@ export class NotificationsService {
       const windowEnd = new Date(now.getTime() + RECORDING_REMINDER_WINDOW_MS);
 
       const events = await this.prisma.recordingEvent.findMany({
-        where: {
-          dataInicio: { gt: now, lte: windowEnd },
-          notifications: { none: { type: NotificationType.lembrete_gravacao } },
+        where: { dataInicio: { gt: now, lte: windowEnd } },
+        select: {
+          id: true,
+          accountId: true,
+          equipe: { select: { crewMember: { select: { userId: true } } } },
         },
-        select: { id: true, accountId: true },
       });
       if (events.length === 0) {
         return;
@@ -174,14 +183,22 @@ export class NotificationsService {
           where: { accountId: event.accountId, role: UserRole.owner },
           select: { id: true },
         });
-        if (owners.length === 0) {
+        const crewUserIds = event.equipe
+          .map((e) => e.crewMember.userId)
+          .filter((userId): userId is string => userId !== null);
+
+        const recipientIds = new Set([
+          ...owners.map((owner) => owner.id),
+          ...crewUserIds,
+        ]);
+        if (recipientIds.size === 0) {
           continue;
         }
 
         await this.prisma.notification.createMany({
-          data: owners.map((owner) => ({
+          data: [...recipientIds].map((userId) => ({
             accountId: event.accountId,
-            userId: owner.id,
+            userId,
             recordingEventId: event.id,
             type: NotificationType.lembrete_gravacao,
           })),

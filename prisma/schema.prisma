@@ -166,6 +166,8 @@ model User {
   projectMemberships      ProjectMember[]
   // Demandas (cards do board Kanban) atribuidas a este usuario
   demandasResponsavel     Demanda[]
+  // CrewMember(s) vinculados a esta conta (ver CrewMember.userId)
+  crewMemberLinks         CrewMember[]
 
   @@index([accountId])
   @@map("users")
@@ -267,19 +269,26 @@ model RecordingEvent {
   @@map("recording_events")
 }
 
-// Pessoa da equipe de gravacao (freelancer, motorista etc.) — nao e um
-// User do sistema, so um nome cadastrado pela agencia pra escalar em
-// RecordingEvent (ver RecordingEventCrew).
+// Pessoa da equipe de gravacao (freelancer, motorista etc.). Normalmente nao
+// e um User do sistema, so um nome cadastrado pela agencia pra escalar em
+// RecordingEvent (ver RecordingEventCrew) — mas userId pode vincular esse
+// registro a uma conta real (owner/editor) quando a pessoa escalada tem
+// login no Aprova, o que abre espaco pra notifica-la (ver
+// NotificationsService.sendRecordingReminders). Null continua sendo o caso
+// comum (freelancer, motorista etc., sem conta).
 model CrewMember {
   id        String   @id @default(uuid())
   accountId String   @map("account_id")
   nome      String
+  userId    String?  @map("user_id")
   criadoEm  DateTime @default(now()) @map("criado_em")
 
   account         Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   recordingEvents RecordingEventCrew[]
 
   @@index([accountId])
+  @@index([userId])
   @@map("crew_members")
 }
 
@@ -631,8 +640,10 @@ model RatingQuestion {
 
 // Notificacao in-app para o owner/editor responsavel ficarem cientes de
 // acoes do cliente (comentario, aprovacao, ajuste, avaliacao) num video, ou
-// para o owner ser lembrado de uma gravacao proxima (lembrete_gravacao,
-// videoId nulo/recordingEventId preenchido nesse caso).
+// para lembrar de uma gravacao proxima (lembrete_gravacao, videoId nulo/
+// recordingEventId preenchido nesse caso) — destinatarios: todo owner da
+// conta + cada CrewMember escalado no evento que tenha userId (ver
+// NotificationsService.sendRecordingReminders).
 model Notification {
   id               String           @id @default(uuid())
   accountId        String           @map("account_id")

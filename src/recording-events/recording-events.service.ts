@@ -17,7 +17,9 @@ const RECORDING_EVENT_SELECT = {
   observacoes: true,
   cliente: { select: { nome: true } },
   membro: { select: { nome: true } },
-  equipe: { select: { crewMember: { select: { id: true, nome: true } } } },
+  equipe: {
+    select: { crewMember: { select: { id: true, nome: true, userId: true } } },
+  },
 } as const;
 
 type RawRecordingEvent = {
@@ -30,7 +32,7 @@ type RawRecordingEvent = {
   observacoes: string | null;
   cliente: { nome: string } | null;
   membro: { nome: string } | null;
-  equipe: { crewMember: { id: string; nome: string } }[];
+  equipe: { crewMember: { id: string; nome: string; userId: string | null } }[];
 };
 
 function toDto(event: RawRecordingEvent) {

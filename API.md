@@ -1174,7 +1174,8 @@ token (nunca cruza contas ou usuários).
 ```
 
 `Notification` do tipo `lembrete_gravacao` (ver abaixo) vem sem `video`, com
-`event` no lugar:
+`event` no lugar (mesmo shape independente do destinatário ser owner ou um
+membro da equipe escalado):
 ```json
 {
   "id": "uuid",
@@ -1196,10 +1197,14 @@ token (nunca cruza contas ou usuários).
   todos os `owner` da conta + o `editorResponsavel` do vídeo (se houver).
 - `lembrete_gravacao`: gerada por um cron (`NotificationsService.sendRecordingReminders`,
   a cada 10min) quando um [`RecordingEvent`](#calendário-de-gravações-recording-events)
-  está a até 24h do início (`dataInicio`). Destinatário: só o(s) `owner`(s)
-  da conta — nunca os `editor`. Disparada uma única vez por evento (índice
-  único `recording_event_id/user_id/type` + checagem de notificação
-  existente evitam duplicar a cada execução do cron).
+  está a até 24h do início (`dataInicio`). Destinatários: todo `owner` da
+  conta (sempre) **+** cada pessoa da [`equipe`](#equipe-de-gravação-crew)
+  escalada no evento que tiver `userId` preenchido (pode ser `owner` ou
+  `editor`) — quem não tem `userId` (freelancer, motorista etc.) não recebe
+  nada, não há conta pra notificar. Disparada uma única vez por
+  destinatário/evento (índice único `recording_event_id/user_id/type` +
+  `skipDuplicates` evitam duplicar a cada execução do cron ou entre pessoas
+  adicionadas à equipe depois que o lembrete já saiu pros owners).
 - `GET /notifications?naoLidas=true`: filtra só as não lidas. Sem o
   parâmetro (ou `naoLidas=false`), lista as 50 mais recentes independente
   do status de leitura.
@@ -1249,11 +1254,17 @@ motorista etc, não usuários do sistema). No `PATCH`, enviar `equipeIds`
   "observacoes": "Levar tripé extra",
   "clienteNome": "Cliente A",
   "membroNome": "João Editor",
-  "equipe": [{ "id": "uuid", "nome": "Maria Freelancer" }]
+  "equipe": [
+    { "id": "uuid", "nome": "Maria Freelancer", "userId": null },
+    { "id": "uuid", "nome": "Marina Alves", "userId": "uuid-do-user" }
+  ]
 }
 ```
 `clienteNome`/`membroNome` vêm nulos se `clienteId`/`membroId` forem nulos.
 `equipe` vem como array vazio (nunca nulo) quando não há ninguém escalado.
+`equipe[].userId` vem nulo quando a pessoa não é vinculada a uma conta real
+(ver [`/crew`](#equipe-de-gravação-crew)) — nesse caso ela não recebe o
+lembrete de gravação (`lembrete_gravacao`), só aparece no card.
 
 Erros: `400` se `clienteId` não corresponder a um `Client` da mesma conta,
 `membroId` a um `User` (owner/editor) da mesma conta, ou algum item de
@@ -1264,23 +1275,35 @@ existir ou não pertencer à conta.
 
 ## Equipe de gravação (`/crew`)
 Autenticado — roles `owner`, `editor`. Escopado à `accountId` do token.
-Roster de pessoas que participam de gravações mas não são usuários do
-sistema (freelancers, motorista etc) — só um cadastro de nome, usado pra
-escalar em [`RecordingEvent.equipeIds`](#calendário-de-gravações-recording-events).
+Roster de pessoas que participam de gravações, usado pra escalar em
+[`RecordingEvent.equipeIds`](#calendário-de-gravações-recording-events).
+Reaproveitável entre eventos — a pessoa é cadastrada uma vez e escalada em
+quantas gravações forem necessárias.
 
 | Método | Rota | Body | Retorno |
 |---|---|---|---|
-| `POST` | `/crew` | `{ nome }` | `CrewMember` criado |
+| `POST` | `/crew` | `{ nome, userId? }` | `CrewMember` criado |
 | `GET` | `/crew` | — | `CrewMember[]` da conta (ordenado por `nome` asc) |
+
+`userId` é opcional e nulável: presente quando a pessoa escalada é uma
+conta real da agência (`owner` ou `editor`), o que a torna elegível a
+receber o lembrete de gravação (`lembrete_gravacao`, ver
+[Notificações](#notificações-notifications)) quando escalada. Omitido/nulo
+é o caso comum — gente sem login no Aprova (freelancer, motorista etc.).
 
 `CrewMember`:
 ```json
 {
   "id": "uuid",
   "nome": "Maria Freelancer",
-  "accountId": "uuid"
+  "userId": null,
+  "accountId": "uuid",
+  "criadoEm": "2026-08-11T12:00:00.000Z"
 }
 ```
+
+Erros: `400` se `userId` não corresponder a um `User` (`owner`/`editor`) da
+mesma conta.
 
 ---
 
