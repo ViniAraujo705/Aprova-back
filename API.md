@@ -399,6 +399,20 @@ com teto 100). Resposta:
 Body: `{ "status": "pendente" | "aprovado" | "ajuste" | "erro" }`
 Ao marcar `aprovado`, o backend carimba `aprovadoEm`.
 
+### `PATCH /videos/:id/etapa`
+Etapa de produção interna (board Kanban) — **independente** do `status`
+acima, que reflete a decisão do cliente na tela pública. Um vídeo pode
+estar `em_edicao` antes mesmo de ir pro cliente, ou `entregue` depois de
+aprovado.
+
+Body: `{ "etapa": "planejado" | "producao" | "edicao" | "aguardando_aprovacao" | "ajustes" | "aprovado" | "entregue" }`
+
+> Quando o cliente decide algo na tela pública, a etapa também avança
+> sozinha: `POST /public/videos/:linkPublico/approve` → `etapaProducao =
+> "aprovado"`; `POST /public/videos/:linkPublico/request-changes` →
+> `etapaProducao = "ajustes"`. As demais etapas (`planejado`, `producao`,
+> `edicao`, `entregue`) são só manuais — a equipe arrasta o card.
+
 ### `PATCH /videos/:id/titulo`
 `owner`+`editor` (mesmo padrão de `PATCH /videos/:id/status`). Renomeia o
 vídeo.
@@ -454,6 +468,7 @@ vaza existência de vídeo de outra agência), `403` (usuário não é
   "deadline": null,
   "editorResponsavelId": null,
   "notaGeral": null,
+  "etapaProducao": "planejado",
   "criadoEm": "2026-07-06T12:00:00.000Z"
 }
 ```
@@ -1480,6 +1495,8 @@ pertence à mesma agência do vídeo.
 
 ### `POST /public/videos/:linkPublico/approve`
 Rate limit: **10/min**. Marca `status = aprovado` e carimba `aprovadoEm`.
+Também avança `etapaProducao` (board Kanban interno) para `aprovado` —
+ver [`PATCH /videos/:id/etapa`](#patch-videosidetapa).
 
 Body (opcional): `{ "notaGeral": 5 }` (inteiro 1–5). Se enviado, é salvo em
 `Video.notaGeral` e passa a valer no [desempenho da equipe](#desempenho-da-equipe-team)
@@ -1487,7 +1504,8 @@ do editor responsável por este vídeo. Pode aprovar sem enviar nada
 (`{}` ou corpo vazio) — nesse caso `notaGeral` permanece `null`.
 
 ### `POST /public/videos/:linkPublico/request-changes`
-Rate limit: **10/min**. Sem body. Marca `status = ajuste`.
+Rate limit: **10/min**. Sem body. Marca `status = ajuste` e avança
+`etapaProducao` para `ajustes`.
 
 ### `PATCH /public/videos/:linkPublico/titulo`
 Rate limit: **10/min**. Sem autenticação — o cliente renomeia o vídeo pela
