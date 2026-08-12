@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { RecordingEventTipo } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRecordingEventDto } from './dto/create-recording-event.dto';
 import { UpdateRecordingEventDto } from './dto/update-recording-event.dto';
@@ -10,10 +11,12 @@ import { UpdateRecordingEventDto } from './dto/update-recording-event.dto';
 const RECORDING_EVENT_SELECT = {
   id: true,
   titulo: true,
+  tipo: true,
   dataInicio: true,
   dataFim: true,
   clienteId: true,
   membroId: true,
+  demandaId: true,
   observacoes: true,
   cliente: { select: { nome: true } },
   membro: { select: { nome: true } },
@@ -25,10 +28,12 @@ const RECORDING_EVENT_SELECT = {
 type RawRecordingEvent = {
   id: string;
   titulo: string;
+  tipo: RecordingEventTipo;
   dataInicio: Date;
   dataFim: Date | null;
   clienteId: string | null;
   membroId: string | null;
+  demandaId: string | null;
   observacoes: string | null;
   cliente: { nome: string } | null;
   membro: { nome: string } | null;
@@ -56,15 +61,18 @@ export class RecordingEventsService {
   async create(accountId: string, dto: CreateRecordingEventDto) {
     await this.assertRefsBelongToAccount(accountId, dto);
     const equipeIds = dto.equipeIds ? dedupe(dto.equipeIds) : [];
+    const demandaId = await this.resolveDemandaId(accountId, dto.demandaId);
 
     const event = await this.prisma.recordingEvent.create({
       data: {
         accountId,
         titulo: dto.titulo,
+        tipo: dto.tipo ?? RecordingEventTipo.gravacao,
         dataInicio: new Date(dto.dataInicio),
         dataFim: dto.dataFim ? new Date(dto.dataFim) : null,
         clienteId: dto.clienteId ?? null,
         membroId: dto.membroId ?? null,
+        demandaId,
         observacoes: dto.observacoes ?? null,
         ...(equipeIds.length
           ? {
@@ -105,6 +113,10 @@ export class RecordingEventsService {
     await this.assertRefsBelongToAccount(accountId, dto);
     const equipeIds =
       dto.equipeIds !== undefined ? dedupe(dto.equipeIds) : undefined;
+    const demandaId =
+      dto.demandaId !== undefined
+        ? await this.resolveDemandaId(accountId, dto.demandaId)
+        : undefined;
 
     // equipeIds substitui a escala inteira (nao faz merge) — apaga as
     // linhas antigas de RecordingEventCrew antes de recriar, na mesma
@@ -120,6 +132,7 @@ export class RecordingEventsService {
         where: { id },
         data: {
           ...(dto.titulo !== undefined ? { titulo: dto.titulo } : {}),
+          ...(dto.tipo !== undefined ? { tipo: dto.tipo } : {}),
           ...(dto.dataInicio !== undefined
             ? { dataInicio: new Date(dto.dataInicio) }
             : {}),
@@ -128,6 +141,7 @@ export class RecordingEventsService {
             : {}),
           ...(dto.clienteId !== undefined ? { clienteId: dto.clienteId } : {}),
           ...(dto.membroId !== undefined ? { membroId: dto.membroId } : {}),
+          ...(demandaId !== undefined ? { demandaId } : {}),
           ...(dto.observacoes !== undefined
             ? { observacoes: dto.observacoes }
             : {}),
@@ -187,5 +201,18 @@ export class RecordingEventsService {
         throw new BadRequestException('equipeIds invalido');
       }
     }
+  }
+
+  /** Demanda ausente, excluida ou de outra conta vira um vinculo nulo. */
+  private async resolveDemandaId(
+    accountId: string,
+    demandaId: string | null | undefined,
+  ): Promise<string | null> {
+    if (!demandaId) return null;
+    const demanda = await this.prisma.demanda.findFirst({
+      where: { id: demandaId, accountId },
+      select: { id: true },
+    });
+    return demanda?.id ?? null;
   }
 }

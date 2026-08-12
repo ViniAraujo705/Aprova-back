@@ -318,22 +318,26 @@ model RecordingEvent {
   id          String    @id @default(uuid())
   accountId   String    @map("account_id")
   titulo      String
+  tipo        RecordingEventTipo @default(gravacao)
   dataInicio  DateTime  @map("data_inicio")
   dataFim     DateTime? @map("data_fim")
   clienteId   String?   @map("cliente_id")
   membroId    String?   @map("membro_id")
+  demandaId   String?   @map("demanda_id")
   observacoes String?
   criadoEm    DateTime  @default(now()) @map("criado_em")
 
   account       Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
   cliente       Client?              @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   membro        User?                @relation(fields: [membroId], references: [id], onDelete: SetNull)
+  demanda       Demanda?             @relation(fields: [demandaId], references: [id], onDelete: SetNull)
   notifications Notification[]
   equipe        RecordingEventCrew[]
 
   @@index([accountId])
   @@index([clienteId])
   @@index([membroId])
+  @@index([demandaId])
   @@map("recording_events")
 }
 
@@ -569,6 +573,17 @@ enum DemandaTipo {
   demanda
 }
 
+enum RecordingEventTipo {
+  gravacao
+  captacao
+  ensaio
+  reuniao
+  entrega
+  prazo
+  evento
+  demanda_interna
+}
+
 // Card generico do board Kanban (etapa de producao), sem estar ligado a
 // nenhum Video - cobre a outra metade do quadro (planejamento/campanha/
 // gravacao) que o card de Video ja nao cobre. Escopo direto por conta
@@ -592,6 +607,7 @@ model Demanda {
   cliente     Client? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   responsavel User?   @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
   video       Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  recordingEvents RecordingEvent[]
 
   @@index([accountId])
   @@index([clienteId])

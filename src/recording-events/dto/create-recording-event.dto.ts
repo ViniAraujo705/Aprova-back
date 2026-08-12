@@ -1,16 +1,22 @@
 import {
   IsArray,
   IsDateString,
+  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
 } from 'class-validator';
+import { RecordingEventTipo } from '@prisma/client';
 
 export class CreateRecordingEventDto {
   @IsString()
   @IsNotEmpty()
   titulo: string;
+
+  @IsOptional()
+  @IsEnum(RecordingEventTipo, { message: 'tipo invalido' })
+  tipo?: RecordingEventTipo;
 
   @IsDateString()
   dataInicio: string;
@@ -31,6 +37,10 @@ export class CreateRecordingEventDto {
   @IsArray()
   @IsUUID('4', { each: true, message: 'equipeIds invalido' })
   equipeIds?: string[];
+
+  @IsOptional()
+  @IsUUID('4', { message: 'demandaId invalido' })
+  demandaId?: string | null;
 
   @IsOptional()
   @IsString()
