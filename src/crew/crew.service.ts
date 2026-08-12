@@ -9,13 +9,13 @@ export class CrewService {
 
   async create(accountId: string, dto: CreateCrewMemberDto) {
     if (dto.userId) {
-      const user = await this.prisma.user.findFirst({
+      const user = await this.prisma.membership.findFirst({
         where: {
-          id: dto.userId,
+          userId: dto.userId,
           accountId,
           role: { in: [UserRole.owner, UserRole.editor] },
         },
-        select: { id: true },
+        select: { userId: true },
       });
       if (!user) {
         throw new BadRequestException('userId invalido');

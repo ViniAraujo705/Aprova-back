@@ -1,10 +1,12 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   GoneException,
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -43,13 +45,25 @@ export class AccountService {
 
     const email = dto.email.toLowerCase();
 
-    // Ja existe um usuario com este email (em qualquer conta)?
+    // Ja existe um usuario com este email (em qualquer conta - pode ja ser
+    // owner/editor de outra agencia)? So bloqueia se ele ja for membro
+    // ativo desta conta especifica - o aceite (acceptInvite) trata o resto:
+    // confirma a identidade pela senha e so cria o Membership novo, sem
+    // duplicar o User.
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
       select: { id: true },
     });
     if (existingUser) {
-      throw new ConflictException('Ja existe um usuario com este email');
+      const activeMembership = await this.prisma.membership.findUnique({
+        where: {
+          userId_accountId: { userId: existingUser.id, accountId },
+        },
+        select: { status: true },
+      });
+      if (activeMembership?.status === UserStatus.ativo) {
+        throw new ConflictException('Este usuario ja e membro desta conta');
+      }
     }
 
     // Ja existe um convite pendente para este email nesta conta? Convite
@@ -105,8 +119,17 @@ export class AccountService {
   }
 
   /**
-   * Aceite publico do convite: cria o usuario editor vinculado a conta do
-   * convite e marca o convite como aceito. Endpoint sem autenticacao.
+   * Aceite publico do convite: liga o convidado (novo ou ja existente em
+   * outra conta) a agencia do convite como editor e marca o convite como
+   * aceito. Endpoint sem autenticacao - ramifica em 3 casos conforme o
+   * email do convite ja tem User ou nao:
+   * - email novo: cria o User (com a senha nova de dto.senha) + Membership;
+   * - email existente com senha local: confirma identidade comparando
+   *   dto.senha com a senha ja cadastrada (nao cria User novo, so o
+   *   Membership nesta conta);
+   * - email existente so-social (sem senha local): nao ha como confirmar
+   *   identidade por senha aqui - pede pra definir uma via "esqueci minha
+   *   senha" antes de tentar de novo.
    */
   async acceptInvite(token: string, dto: AcceptInviteDto, meta: SessionMeta) {
     const invite = await this.prisma.invite.findUnique({
@@ -119,36 +142,61 @@ export class AccountService {
       throw new GoneException('Convite expirado');
     }
 
-    // O email pode ter sido cadastrado por outro caminho nesse meio tempo.
     const existingUser = await this.prisma.user.findUnique({
       where: { email: invite.email },
-      select: { id: true },
     });
-    if (existingUser) {
-      throw new ConflictException('Ja existe um usuario com este email');
+
+    const user = existingUser
+      ? await this.acceptInviteForExistingUser(invite, existingUser, dto)
+      : await this.acceptInviteForNewUser(invite, dto);
+
+    const session = await this.sessions.createSession(user.id, meta);
+
+    return {
+      user: toMemberDto({
+        id: user.id,
+        nome: user.nome,
+        email: user.email,
+        role: UserRole.editor,
+        status: UserStatus.ativo,
+        accountId: invite.accountId,
+        criadoEm: user.criadoEm,
+      }),
+      access_token: this.jwt.sign({
+        sub: user.id,
+        email: user.email,
+        role: UserRole.editor,
+        accountId: invite.accountId,
+        sid: session.id,
+      }),
+    };
+  }
+
+  private async acceptInviteForNewUser(
+    invite: { id: string; accountId: string; email: string },
+    dto: AcceptInviteDto,
+  ) {
+    if (!dto.nome?.trim()) {
+      throw new BadRequestException('Nome e obrigatorio');
     }
 
     const senhaHash = await bcrypt.hash(dto.senha, this.SALT_ROUNDS);
 
-    // Cria o editor e marca o convite como aceito na mesma transacao.
     const [user] = await this.prisma.$transaction([
       this.prisma.user.create({
         data: {
           nome: dto.nome,
           email: invite.email,
           senha: senhaHash,
-          role: UserRole.editor,
-          accountId: invite.accountId,
+          memberships: {
+            create: {
+              accountId: invite.accountId,
+              role: UserRole.editor,
+              status: UserStatus.ativo,
+            },
+          },
         },
-        select: {
-          id: true,
-          nome: true,
-          email: true,
-          role: true,
-          status: true,
-          accountId: true,
-          criadoEm: true,
-        },
+        select: { id: true, nome: true, email: true, criadoEm: true },
       }),
       this.prisma.invite.update({
         where: { id: invite.id },
@@ -156,18 +204,66 @@ export class AccountService {
       }),
     ]);
 
-    const session = await this.sessions.createSession(user.id, meta);
+    return user;
+  }
 
-    return {
-      user: toMemberDto(user),
-      access_token: this.jwt.sign({
-        sub: user.id,
-        email: user.email,
-        role: user.role,
-        accountId: user.accountId,
-        sid: session.id,
+  private async acceptInviteForExistingUser(
+    invite: { id: string; accountId: string; email: string },
+    existingUser: {
+      id: string;
+      nome: string;
+      email: string;
+      senha: string | null;
+      status: UserStatus;
+      criadoEm: Date;
+    },
+    dto: AcceptInviteDto,
+  ) {
+    if (existingUser.status === UserStatus.suspenso) {
+      throw new ForbiddenException(
+        'Conta suspensa. Entre em contato com o administrador.',
+      );
+    }
+    if (!existingUser.senha) {
+      throw new BadRequestException(
+        'Esta conta usa login social. Defina uma senha em "Esqueci minha senha" antes de aceitar este convite.',
+      );
+    }
+    if (!(await bcrypt.compare(dto.senha, existingUser.senha))) {
+      throw new UnauthorizedException('Senha invalida');
+    }
+
+    const existingMembership = await this.prisma.membership.findUnique({
+      where: {
+        userId_accountId: { userId: existingUser.id, accountId: invite.accountId },
+      },
+      select: { id: true, status: true },
+    });
+    if (existingMembership?.status === UserStatus.ativo) {
+      throw new ConflictException('Voce ja e membro desta conta');
+    }
+
+    await this.prisma.$transaction([
+      existingMembership
+        ? this.prisma.membership.update({
+            where: { id: existingMembership.id },
+            data: { role: UserRole.editor, status: UserStatus.ativo },
+          })
+        : this.prisma.membership.create({
+            data: {
+              userId: existingUser.id,
+              accountId: invite.accountId,
+              role: UserRole.editor,
+              status: UserStatus.ativo,
+            },
+          }),
+      this.prisma.invite.update({
+        where: { id: invite.id },
+        data: { status: InviteStatus.aceito },
       }),
-    };
+    ]);
+
+    return existingUser;
   }
 
   /**
@@ -235,17 +331,18 @@ export class AccountService {
    * como "pendente" ou "expirado" comparando `expiresAt` com a hora atual.
    */
   async listMembers(accountId: string) {
-    const [members, invites] = await Promise.all([
-      this.prisma.user.findMany({
+    const [memberships, invites] = await Promise.all([
+      this.prisma.membership.findMany({
         where: { accountId },
         orderBy: [{ role: 'asc' }, { criadoEm: 'asc' }],
         select: {
-          id: true,
-          nome: true,
-          email: true,
           role: true,
           status: true,
+          // "membro desde" = quando entrou nesta agencia, nao quando se
+          // cadastrou na plataforma (a mesma pessoa pode ter entrado em
+          // agencias diferentes em datas diferentes).
           criadoEm: true,
+          user: { select: { id: true, nome: true, email: true } },
         },
       }),
       this.prisma.invite.findMany({
@@ -254,6 +351,17 @@ export class AccountService {
         select: { id: true, email: true, criadoEm: true, expiresEm: true },
       }),
     ]);
+
+    const members = memberships.map((m) =>
+      toMemberDto({
+        id: m.user.id,
+        nome: m.user.nome,
+        email: m.user.email,
+        role: m.role,
+        status: m.status,
+        criadoEm: m.criadoEm,
+      }),
+    );
 
     const invitedMembers = invites.map((invite) => ({
       id: invite.id,
@@ -265,7 +373,7 @@ export class AccountService {
       expiresAt: invite.expiresEm,
     }));
 
-    return [...members.map(toMemberDto), ...invitedMembers];
+    return [...members, ...invitedMembers];
   }
 
   /**
@@ -279,25 +387,30 @@ export class AccountService {
     memberId: string,
     status: UserStatus,
   ) {
-    const member = await this.prisma.user.findFirst({
-      where: { id: memberId, accountId },
-      select: { id: true, role: true, status: true },
+    const membership = await this.prisma.membership.findUnique({
+      where: { userId_accountId: { userId: memberId, accountId } },
+      select: {
+        id: true,
+        role: true,
+        status: true,
+        user: { select: { id: true, nome: true, email: true } },
+      },
     });
-    if (!member) {
+    if (!membership) {
       throw new NotFoundException('Membro nao encontrado nesta conta');
     }
 
     if (
-      member.role === UserRole.owner &&
+      membership.role === UserRole.owner &&
       status === UserStatus.suspenso &&
-      member.status !== UserStatus.suspenso
+      membership.status !== UserStatus.suspenso
     ) {
-      const outrosOwnersAtivos = await this.prisma.user.count({
+      const outrosOwnersAtivos = await this.prisma.membership.count({
         where: {
           accountId,
           role: UserRole.owner,
           status: UserStatus.ativo,
-          id: { not: member.id },
+          userId: { not: memberId },
         },
       });
       if (outrosOwnersAtivos === 0) {
@@ -307,12 +420,12 @@ export class AccountService {
       }
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: member.id },
+    const updated = await this.prisma.membership.update({
+      where: { id: membership.id },
       data: { status },
-      select: { id: true, nome: true, email: true, role: true, status: true },
+      select: { role: true, status: true },
     });
-    return toMemberDto(updated);
+    return toMemberDto({ ...membership.user, ...updated });
   }
 
   /**
@@ -320,28 +433,33 @@ export class AccountService {
    * editor) - a conta pode ter mais de um owner simultaneamente.
    */
   async promoteMemberToOwner(accountId: string, memberId: string) {
-    const member = await this.prisma.user.findFirst({
-      where: { id: memberId, accountId },
-      select: { id: true, role: true, status: true },
+    const membership = await this.prisma.membership.findUnique({
+      where: { userId_accountId: { userId: memberId, accountId } },
+      select: {
+        id: true,
+        role: true,
+        status: true,
+        user: { select: { id: true, nome: true, email: true } },
+      },
     });
-    if (!member) {
+    if (!membership) {
       throw new NotFoundException('Membro nao encontrado nesta conta');
     }
-    if (member.role !== UserRole.editor) {
+    if (membership.role !== UserRole.editor) {
       throw new BadRequestException('Membro ja e owner');
     }
-    if (member.status !== UserStatus.ativo) {
+    if (membership.status !== UserStatus.ativo) {
       throw new BadRequestException(
         'Apenas editores ativos podem ser promovidos a owner',
       );
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: member.id },
+    const updated = await this.prisma.membership.update({
+      where: { id: membership.id },
       data: { role: UserRole.owner },
-      select: { id: true, nome: true, email: true, role: true, status: true },
+      select: { role: true, status: true },
     });
-    return toMemberDto(updated);
+    return toMemberDto({ ...membership.user, ...updated });
   }
 
   /** Owner lista as sessoes ativas (dispositivos logados) de um membro. */
@@ -375,11 +493,11 @@ export class AccountService {
     accountId: string,
     memberId: string,
   ): Promise<void> {
-    const member = await this.prisma.user.findFirst({
-      where: { id: memberId, accountId },
+    const membership = await this.prisma.membership.findUnique({
+      where: { userId_accountId: { userId: memberId, accountId } },
       select: { id: true },
     });
-    if (!member) {
+    if (!membership) {
       throw new NotFoundException('Membro nao encontrado nesta conta');
     }
   }

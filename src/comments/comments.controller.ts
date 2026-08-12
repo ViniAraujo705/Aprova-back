@@ -44,7 +44,7 @@ export class CommentsController {
     @CurrentUser() user: AuthUser,
     @Param('id', new ParseUUIDPipe({ version: '4' })) videoId: string,
   ) {
-    return this.commentsService.listInternal(user.accountId, videoId);
+    return this.commentsService.listInternal(user.accountId, videoId, user);
   }
 
   @Post('internal')
@@ -95,6 +95,7 @@ export class CommentsController {
       user.accountId,
       videoId,
       commentId,
+      user,
     );
   }
 
@@ -115,6 +116,7 @@ export class CommentsController {
       videoId,
       commentId,
       dto,
+      user,
     );
   }
 }

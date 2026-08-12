@@ -136,9 +136,9 @@ export class DemandasService {
       }
     }
     if (dto.responsavelId) {
-      const responsavel = await this.prisma.user.findFirst({
-        where: { id: dto.responsavelId, accountId },
-        select: { id: true },
+      const responsavel = await this.prisma.membership.findFirst({
+        where: { userId: dto.responsavelId, accountId },
+        select: { userId: true },
       });
       if (!responsavel) {
         throw new BadRequestException('responsavelId invalido');

@@ -123,7 +123,14 @@ Sem autenticação. Rate limit: **5/min**.
 
 Body: `{ "email": "...", "senha": "..." }`
 
-Resposta `200`: mesmo shape de `register` (`{ user, access_token }`).
+Resposta `200`, **dois formatos possíveis** (ver
+[Multi-conta](#multi-conta-1-pessoa-em-várias-agências) abaixo):
+- 1 agência vinculada (caso comum, sem mudança de comportamento): mesmo
+  shape de `register` — `{ user, access_token }`.
+- 2+ agências vinculadas: `{ requiresAccountSelection: true, pendingToken,
+  accounts: [{ accountId, nomeAgencia, role }] }` — **sem** `access_token`.
+  O frontend precisa detectar `requiresAccountSelection` e chamar
+  `POST /auth/select-account` para terminar o login.
 
 Erros: `401` credenciais inválidas · `403` conta suspensa.
 
@@ -147,7 +154,9 @@ Body:
 - `nomeAgencia` opcional, usado **só** se for a primeira vez desse usuário
   (cria a conta) — se omitido, usa o nome do perfil Google.
 
-Resposta `200`: mesmo shape de `register`/`login` (`{ user, access_token }`).
+Resposta `200`: mesmo shape de `login` (pode vir `requiresAccountSelection`
+em vez de `access_token` direto, se esse Google já estiver vinculado a um
+usuário com 2+ agências — ver [Multi-conta](#multi-conta-1-pessoa-em-várias-agências)).
 
 Comportamento:
 - Se já existe uma conta com o `sub` do Google vinculado, loga direto.
@@ -177,7 +186,8 @@ Body:
   o backend usa a parte local do e-mail como nome.
 - `nomeAgencia` opcional, mesmo comportamento do `/auth/google`.
 
-Resposta `200`: mesmo shape de `register`/`login`.
+Resposta `200`: mesmo shape de `login` (idem nota de `requiresAccountSelection`
+em `/auth/google` acima).
 
 Erros: `401` token inválido ou e-mail não verificado pela Apple · `403`
 conta suspensa, ou `APPLE_CLIENT_ID` não configurado no backend.
@@ -232,6 +242,44 @@ link `/confirmar-email/:token` válido por 7 dias.
 > `user.emailVerificado` vem em toda resposta de autenticação
 > (`register`/`login`/`google`/`apple`) e em `GET /users/me` — hoje é só
 > informativo (login **não** é bloqueado por email não confirmado).
+
+### Multi-conta (1 pessoa em várias agências)
+
+**Novidade (2026-08-11):** um mesmo login (email) agora pode ser membro —
+`owner` ou `editor` — de mais de uma agência ao mesmo tempo (ex.: alguém que
+já tinha conta própria aceita um convite pra editor em outra agência). Isso
+só acontece quando um convite (`POST /account/invite`) é aceito com um email
+que já tinha conta — ver seção [Conta / equipe](#conta--equipe-account).
+
+**Se o usuário só tem 1 agência vinculada, nada muda** — `login`/`google`/
+`apple` continuam devolvendo `{ user, access_token }` direto, sem nenhum
+passo extra. O fluxo abaixo só entra em ação para quem tem 2+.
+
+| Método | Rota | Auth | Body | Retorno |
+|---|---|---|---|---|
+| `POST` | `/auth/select-account` | `pendingToken` **ou** token completo | `{ accountId }` | `{ user, access_token }` |
+| `GET` | `/auth/my-accounts` | qualquer role | — | `[{ accountId, nomeAgencia, role, isCurrent }]` |
+
+- Quando `login`/`google`/`apple` retornam `requiresAccountSelection: true`,
+  vem junto `pendingToken` (curto, expira em 5 min, só serve pra esse fluxo)
+  e `accounts: [{ accountId, nomeAgencia, role }]` — a lista de agências pra
+  mostrar num seletor. O frontend chama `POST /auth/select-account` com
+  `Authorization: Bearer <pendingToken>` e `{ accountId: "<escolhido>" }` no
+  body, e recebe de volta `{ user, access_token }` normal (mesmo shape de
+  `login`), já pronto pra usar no resto da API.
+- `select-account` **também funciona com um token completo normal** (não só
+  o `pendingToken`) — é o mesmo endpoint usado para trocar de agência ativa
+  estando já logado (ex.: um dropdown "trocar de agência" no header). Nesse
+  caso a sessão existente é reaproveitada (não desloga de outros
+  dispositivos); usando o `pendingToken` (logo após login), uma sessão nova
+  é criada normalmente.
+- `my-accounts`: lista as agências ativas do usuário logado, com `isCurrent`
+  marcando qual é a do token atual — útil pra montar o seletor/dropdown de
+  troca de conta sem depender de ter passado pelo fluxo de login com
+  `requiresAccountSelection`.
+- Erros: `401` `pendingToken`/token inválido ou expirado · `403` se a
+  `accountId` escolhida não corresponde a nenhuma agência ativa desse
+  usuário (removido/suspenso nela depois do token ter sido emitido).
 
 ---
 
@@ -876,7 +924,7 @@ Resposta:
 | Método | Rota | Auth | Body | Retorno |
 |---|---|---|---|---|
 | `POST` | `/account/invite` | `owner` | `{ email }` | `{ id, email, status, criadoEm, expiresAt, inviteUrl }` |
-| `POST` | `/account/invite/:token/accept` | **sem autenticação** | `{ nome, senha }` | `{ user, access_token }` |
+| `POST` | `/account/invite/:token/accept` | **sem autenticação** | `{ nome?, senha }` | `{ user, access_token }` |
 | `POST` | `/account/invite/:id/send-email` | `owner` | — | `{ sent: true, expiresAt }` |
 | `DELETE` | `/account/invite/:id` | `owner` | — | `204 No Content` |
 | `GET` | `/account/members` | `owner` | — | `Member[]` |
@@ -887,15 +935,32 @@ Resposta:
   (`expiresAt`, ISO 8601). `inviteUrl` é o link completo
   (`<CORS_ORIGIN>/convite/:token`) — hoje o envio de email é simulado (só
   loga no backend), então o frontend/owner precisa repassar esse link
-  manualmente. `409` se já existe usuário ou convite **ainda válido**
-  (`expiresAt` no futuro) pendente para o email — se o convite pendente
-  anterior já expirou, ele é cancelado automaticamente e um novo é criado
-  sem erro.
+  manualmente. `409` se convite **ainda válido** (`expiresAt` no futuro)
+  pendente para o email (convite expirado é cancelado automaticamente e um
+  novo é criado sem erro), ou se o email já é membro **ativo desta mesma
+  conta**.
+  > **Mudou (2026-08-11):** convidar um email que já tem conta em **outra**
+  > agência agora funciona (antes dava `409` sempre) — ver
+  > [Multi-conta](#multi-conta-1-pessoa-em-várias-agências). O aceite nesse
+  > caso pede a senha existente da pessoa, não nome + senha nova (ver
+  > `accept` abaixo).
 - `accept`: fluxo público (tela `/convite/:token` no frontend). `:token` é
-  o UUID do convite. Cria o usuário `editor` e retorna token de sessão já
-  logado, igual ao login. `404` se o convite já foi usado/não existe/foi
-  cancelado. `410 Gone` se o convite existe e está `pendente` mas
-  `expiresAt` já passou.
+  o UUID do convite. Retorna token de sessão já logado, igual ao login —
+  mas o body esperado **depende de o email do convite já ter conta ou não**
+  (o backend decide sozinho, o frontend não precisa saber de antemão qual é
+  o caso — só tentar com o que o usuário digitou):
+  - **Email novo** (caso comum): `{ nome, senha }` — `nome` obrigatório,
+    `senha` é a senha nova da conta que vai ser criada (mín. 6 caracteres).
+    Cria o usuário `editor`.
+  - **Email já tem conta (em qualquer agência)**: `{ senha }` — `nome` é
+    ignorado se vier. `senha` aqui é a **senha atual** dessa conta, usada
+    só pra confirmar identidade (não troca nem cria senha nova). Se
+    confirmada, só cria o vínculo `editor` com a nova agência — não duplica
+    usuário. `401` se a senha não bater. `400` se essa conta só tem login
+    social (Google/Apple) e nunca teve senha local — mensagem pede pra
+    definir uma via `/auth/forgot-password` antes de tentar de novo.
+  - `404` se o convite já foi usado/não existe/foi cancelado. `410 Gone` se
+    o convite existe e está `pendente` mas `expiresAt` já passou.
 - `cancelInvite`: `:id` é o id do convite (mesmo `id` retornado por
   `invite`). Só cancela convites com status `pendente` (`400` se já foi
   aceito/cancelado). `404` se o convite não existe ou não pertence à

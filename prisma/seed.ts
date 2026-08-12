@@ -29,16 +29,21 @@ async function main() {
 
   const senhaHash = await bcrypt.hash(senha, 10);
 
-  const user = await prisma.user.create({
-    data: {
-      nome,
-      email,
-      senha: senhaHash,
-      role: UserRole.admin,
-      account: {
-        create: { nomeAgencia: 'Vistoow (admin)' },
+  const user = await prisma.$transaction(async (tx) => {
+    const account = await tx.account.create({
+      data: { nomeAgencia: 'Vistoow (admin)' },
+    });
+    return tx.user.create({
+      data: {
+        nome,
+        email,
+        senha: senhaHash,
+        role: UserRole.admin,
+        memberships: {
+          create: { accountId: account.id, role: UserRole.admin },
+        },
       },
-    },
+    });
   });
 
   console.log(`Admin criado: ${user.email}`);

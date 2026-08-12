@@ -9,6 +9,7 @@ import {
   AuthUser,
 } from '../auth/decorators/current-user.decorator';
 import { TeamService } from './team.service';
+import { PlansService } from '../plans/plans.service';
 
 @ApiTags('team')
 @ApiBearerAuth()
@@ -16,14 +17,18 @@ import { TeamService } from './team.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.owner)
 export class TeamController {
-  constructor(private readonly teamService: TeamService) {}
+  constructor(
+    private readonly teamService: TeamService,
+    private readonly plansService: PlansService,
+  ) {}
 
   @Get('performance')
   @ApiOperation({
     summary:
-      'Desempenho por editor: nota media (0-10) dos videos aprovados atribuidos e contagem de aprovados.',
+      'Desempenho por editor: nota media (0-10) dos videos aprovados atribuidos e contagem de aprovados. Requer plano Agencia.',
   })
-  getPerformance(@CurrentUser() user: AuthUser) {
+  async getPerformance(@CurrentUser() user: AuthUser) {
+    await this.plansService.assertFeature(user.accountId, 'teamPerformance');
     return this.teamService.getPerformance(user.accountId);
   }
 }

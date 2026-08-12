@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { User, UserRole } from '@prisma/client';
+import { User, UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import appleSignin, { AppleIdTokenType } from 'apple-signin-auth';
@@ -385,10 +385,13 @@ export class AuthService {
   }
 
   /**
-   * Cria a agencia (Account) + o usuario dono (owner) juntos - usado tanto
-   * pelo cadastro por email/senha quanto pelo primeiro login social. Cada
-   * agencia comeca com um unico owner (editores entram via convite) e ja
-   * nasce com as 3 perguntas de avaliacao padrao.
+   * Cria a agencia (Account) + o usuario dono (owner) + o Membership que os
+   * liga, juntos numa transacao - usado tanto pelo cadastro por email/senha
+   * quanto pelo primeiro login social. Cada agencia comeca com um unico
+   * owner (editores entram via convite) e ja nasce com as 3 perguntas de
+   * avaliacao padrao. Criar uma agencia nova para um email ja cadastrado
+   * (usuario existente logado abrindo uma segunda agencia do zero) nao e
+   * suportado aqui - so entrar numa conta existente via convite.
    */
   private async createOwnerAccount(params: {
     nome: string;
@@ -399,21 +402,13 @@ export class AuthService {
     appleId?: string;
     avatarUrl?: string;
   }): Promise<User> {
-    const user = await this.prisma.user.create({
-      data: {
-        nome: params.nome,
-        email: params.email,
-        senha: params.senhaHash,
-        googleId: params.googleId,
-        appleId: params.appleId,
-        avatarUrl: params.avatarUrl,
-        // Login social ja chega com o email verificado pelo provider
-        // (checado em loginWithGoogle/loginWithApple antes de chegar aqui).
-        emailVerificadoEm:
-          params.googleId || params.appleId ? new Date() : undefined,
-        role: UserRole.owner,
-        account: {
-          create: {
+    const emailVerificadoEm =
+      params.googleId || params.appleId ? new Date() : undefined;
+
+    const { user, accountId } = await this.prisma.$transaction(
+      async (tx) => {
+        const account = await tx.account.create({
+          data: {
             nomeAgencia: params.nomeAgencia ?? params.nome,
             ratingQuestions: {
               create: [
@@ -423,13 +418,37 @@ export class AuthService {
               ],
             },
           },
-        },
+          select: { id: true },
+        });
+
+        const createdUser = await tx.user.create({
+          data: {
+            nome: params.nome,
+            email: params.email,
+            senha: params.senhaHash,
+            googleId: params.googleId,
+            appleId: params.appleId,
+            avatarUrl: params.avatarUrl,
+            // Login social ja chega com o email verificado pelo provider
+            // (checado em loginWithGoogle/loginWithApple antes de chegar aqui).
+            emailVerificadoEm,
+            memberships: {
+              create: {
+                accountId: account.id,
+                role: UserRole.owner,
+                status: UserStatus.ativo,
+              },
+            },
+          },
+        });
+
+        return { user: createdUser, accountId: account.id };
       },
-    });
+    );
 
     // Popula dados de exemplo em background (não bloqueia o cadastro).
     // OnboardingService.seedExampleData nunca lança — trata o próprio erro.
-    void this.onboarding.seedExampleData(user.accountId);
+    void this.onboarding.seedExampleData(accountId);
 
     // Email de boas-vindas em background (não bloqueia o cadastro).
     // sendWelcomeEmail nunca lança — trata o próprio erro, mesmo padrão acima.
@@ -496,42 +515,161 @@ export class AuthService {
   }
 
   /**
-   * Monta a resposta padrao `{ user, access_token }`, nunca expondo
-   * `senha`. Cria a sessao (linha em Session) antes de assinar o token,
-   * pois o JWT carrega o id dela na claim `sid` (ver JwtStrategy).
+   * Memberships ativos do usuario (uma por agencia da qual participa),
+   * com o nome da agencia junto - base tanto da decisao de login (1 conta
+   * = token direto, 2+ = selecao) quanto do endpoint /auth/my-accounts.
    */
-  private async buildAuthResponse(user: User, meta: SessionMeta) {
-    const [session, account] = await Promise.all([
-      this.sessions.createSession(user.id, meta),
-      this.prisma.account.findUnique({
-        where: { id: user.accountId },
-        select: { nomeAgencia: true },
-      }),
-    ]);
+  private async resolveMemberships(userId: string): Promise<
+    { accountId: string; role: UserRole; nomeAgencia: string }[]
+  > {
+    const memberships = await this.prisma.membership.findMany({
+      where: { userId, status: UserStatus.ativo },
+      select: {
+        accountId: true,
+        role: true,
+        account: { select: { nomeAgencia: true } },
+      },
+      orderBy: { criadoEm: 'asc' },
+    });
+    return memberships.map((m) => ({
+      accountId: m.accountId,
+      role: m.role,
+      nomeAgencia: m.account.nomeAgencia,
+    }));
+  }
+
+  /**
+   * Monta a resposta padrao `{ user, access_token }` para uma conta ja
+   * escolhida, nunca expondo `senha`. Reaproveita a sessao existente
+   * (`existingSessionId`) ao trocar de conta ativa no meio de um login ja
+   * em curso - so cria uma sessao nova (linha em Session) quando nao ha
+   * nenhuma ainda. O JWT carrega o id da sessao na claim `sid` (ver
+   * JwtStrategy).
+   */
+  private async issueSessionAndToken(
+    user: User,
+    accountId: string,
+    role: UserRole,
+    nomeAgencia: string | null,
+    meta: SessionMeta,
+    existingSessionId?: string,
+  ) {
+    const session = existingSessionId
+      ? { id: existingSessionId }
+      : await this.sessions.createSession(user.id, meta);
+
     return {
       user: toMemberDto({
         id: user.id,
         nome: user.nome,
         email: user.email,
-        role: user.role,
-        status: user.status,
-        accountId: user.accountId,
+        role,
+        status: UserStatus.ativo,
+        accountId,
         // Branding (white label) da agencia: o painel/cliente precisa disso
         // logo apos o login, sem depender de uma segunda chamada.
         logoUrl: user.logoUrl,
         corDestaque: user.corDestaque,
-        nomeAgencia: account?.nomeAgencia ?? null,
+        nomeAgencia,
         criadoEm: user.criadoEm,
         emailVerificado: Boolean(user.emailVerificadoEm),
       }),
-      access_token: this.signToken(
-        user.id,
-        user.email,
-        user.role,
-        user.accountId,
-        session.id,
-      ),
+      access_token: this.signToken(user.id, user.email, role, accountId, session.id),
     };
+  }
+
+  /**
+   * Decide entre emitir o token direto (1 conta so - zero mudanca de UX) ou
+   * pedir pro cliente escolher a conta ativa (2+ agencias vinculadas ao
+   * mesmo login). Chamado por register/login/loginWithGoogle/loginWithApple
+   * logo apos autenticar o usuario.
+   */
+  private async buildAuthResponse(user: User, meta: SessionMeta) {
+    const memberships = await this.resolveMemberships(user.id);
+
+    if (memberships.length === 0) {
+      // Nao deveria acontecer via fluxos normais - registro e aceite de
+      // convite sempre criam User + Membership juntos, na mesma transacao.
+      throw new ForbiddenException(
+        'Nenhuma agencia ativa vinculada a esta conta',
+      );
+    }
+
+    if (memberships.length === 1) {
+      const [membership] = memberships;
+      return this.issueSessionAndToken(
+        user,
+        membership.accountId,
+        membership.role,
+        membership.nomeAgencia,
+        meta,
+      );
+    }
+
+    return {
+      requiresAccountSelection: true as const,
+      pendingToken: this.signPendingToken(user.id),
+      accounts: memberships.map((m) => ({
+        accountId: m.accountId,
+        nomeAgencia: m.nomeAgencia,
+        role: m.role,
+      })),
+    };
+  }
+
+  /**
+   * Finaliza a escolha de conta ativa: chamado tanto logo apos um login que
+   * retornou `requiresAccountSelection` (com o pendingToken) quanto por
+   * quem ja esta logado trocando de conta ativa (com o token completo,
+   * reaproveitando a sessao via `existingSessionId`) - ver SelectAccountGuard.
+   */
+  async selectAccount(
+    userId: string,
+    accountId: string,
+    meta: SessionMeta,
+    existingSessionId?: string,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('Usuario nao encontrado');
+    }
+    if (user.status === UserStatus.suspenso) {
+      throw new ForbiddenException(
+        'Conta suspensa. Entre em contato com o administrador.',
+      );
+    }
+
+    const membership = await this.prisma.membership.findUnique({
+      where: { userId_accountId: { userId, accountId } },
+      select: {
+        role: true,
+        status: true,
+        account: { select: { nomeAgencia: true } },
+      },
+    });
+    if (!membership || membership.status !== UserStatus.ativo) {
+      throw new ForbiddenException('Voce nao tem acesso a esta conta');
+    }
+
+    return this.issueSessionAndToken(
+      user,
+      accountId,
+      membership.role,
+      membership.account.nomeAgencia,
+      meta,
+      existingSessionId,
+    );
+  }
+
+  /** Lista as agencias ativas do usuario logado - base do seletor de conta. */
+  async myAccounts(userId: string, currentAccountId: string) {
+    const memberships = await this.resolveMemberships(userId);
+    return memberships.map((m) => ({
+      accountId: m.accountId,
+      nomeAgencia: m.nomeAgencia,
+      role: m.role,
+      isCurrent: m.accountId === currentAccountId,
+    }));
   }
 
   /** Le uma env separada por virgula (ex: varios client IDs Google/Apple). */
@@ -566,5 +704,18 @@ export class AuthService {
     sid: string,
   ): string {
     return this.jwt.sign({ sub, email, role, accountId, sid });
+  }
+
+  /**
+   * Token curto (5 min) de escopo restrito, emitido quando o login precisa
+   * que o cliente escolha a conta ativa (2+ agencias). Carrega so `sub` e
+   * `purpose` - sem accountId/role/sid, que so existem apos a escolha (ver
+   * SelectAccountGuard/AuthService.selectAccount).
+   */
+  private signPendingToken(sub: string): string {
+    return this.jwt.sign(
+      { sub, purpose: 'select-account' },
+      { expiresIn: '5m' },
+    );
   }
 }

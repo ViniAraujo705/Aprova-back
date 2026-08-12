@@ -15,6 +15,8 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { createWithUniqueLinkPublico } from '../common/short-id.util';
+import { assertProjectAccess } from '../common/project-access.util';
+import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { StorageService } from '../storage/storage.service';
 import { PlansService } from '../plans/plans.service';
 import { VideoProcessingService } from './processing/video-processing.service';
@@ -51,8 +53,8 @@ export class VideosService {
     return this.storage.createPresignedUpload(dto.nomeArquivo, dto.contentType);
   }
 
-  async create(accountId: string, dto: CreateVideoDto) {
-    await this.assertProjectOwnership(accountId, dto.projectId);
+  async create(accountId: string, dto: CreateVideoDto, user: AuthUser) {
+    await this.assertProjectOwnership(accountId, dto.projectId, user);
     await this.plans.assertCanCreateVideo(accountId);
     await this.validateUploadedFile(dto.urlStorage);
 
@@ -97,8 +99,13 @@ export class VideosService {
    * historico: os comentarios/ratings da versao anterior permanecem
    * ligados ao video pai.
    */
-  async createNewVersion(accountId: string, paiId: string, dto: NewVersionDto) {
-    const pai = await this.getOwnedVideo(accountId, paiId);
+  async createNewVersion(
+    accountId: string,
+    paiId: string,
+    dto: NewVersionDto,
+    user: AuthUser,
+  ) {
+    const pai = await this.getOwnedVideo(accountId, paiId, user);
     await this.validateUploadedFile(dto.urlStorage);
 
     const video = await createWithUniqueLinkPublico((linkPublico) =>
@@ -131,14 +138,24 @@ export class VideosService {
    */
   async findByProject(
     accountId: string,
-    projectId?: string,
+    projectId: string | undefined,
     page = 1,
     limit = 50,
+    user: AuthUser,
   ) {
     if (projectId) {
-      await this.assertProjectOwnership(accountId, projectId);
+      await this.assertProjectOwnership(accountId, projectId, user);
     }
-    const where = projectId ? { projectId } : { project: { accountId } };
+    const where = projectId
+      ? { projectId }
+      : {
+          project: {
+            accountId,
+            ...(user.role === UserRole.editor
+              ? { members: { some: { userId: user.id } } }
+              : {}),
+          },
+        };
     // orderBy versao/id garante paginacao deterministica (versao sozinha
     // tem empates entre familias de video diferentes)
     const orderBy: Prisma.VideoOrderByWithRelationInput[] = [
@@ -173,8 +190,13 @@ export class VideosService {
     };
   }
 
-  async updateStatus(accountId: string, id: string, status: VideoStatus) {
-    await this.getOwnedVideo(accountId, id);
+  async updateStatus(
+    accountId: string,
+    id: string,
+    status: VideoStatus,
+    user: AuthUser,
+  ) {
+    await this.getOwnedVideo(accountId, id, user);
     return this.prisma.video.update({
       where: { id },
       data: {
@@ -192,8 +214,9 @@ export class VideosService {
     accountId: string,
     id: string,
     etapa: EtapaProducao,
+    user: AuthUser,
   ) {
-    await this.getOwnedVideo(accountId, id);
+    await this.getOwnedVideo(accountId, id, user);
     return this.prisma.video.update({
       where: { id },
       data: { etapaProducao: etapa },
@@ -205,16 +228,26 @@ export class VideosService {
    * e feita no controller (RolesGuard); aqui so garante o isolamento por
    * conta, igual aos demais metodos.
    */
-  async updateDeadline(accountId: string, id: string, dto: UpdateDeadlineDto) {
-    await this.getOwnedVideo(accountId, id);
+  async updateDeadline(
+    accountId: string,
+    id: string,
+    dto: UpdateDeadlineDto,
+    user: AuthUser,
+  ) {
+    await this.getOwnedVideo(accountId, id, user);
     return this.prisma.video.update({
       where: { id },
       data: { deadline: dto.deadline ? new Date(dto.deadline) : null },
     });
   }
 
-  async updateTitulo(accountId: string, id: string, dto: UpdateTituloDto) {
-    await this.getOwnedVideo(accountId, id);
+  async updateTitulo(
+    accountId: string,
+    id: string,
+    dto: UpdateTituloDto,
+    user: AuthUser,
+  ) {
+    await this.getOwnedVideo(accountId, id, user);
     return this.prisma.video.update({
       where: { id },
       data: { nomeArquivo: dto.nomeArquivo },
@@ -229,17 +262,18 @@ export class VideosService {
     accountId: string,
     id: string,
     editorId: string | null,
+    user: AuthUser,
   ) {
-    await this.getOwnedVideo(accountId, id);
+    await this.getOwnedVideo(accountId, id, user);
 
     if (editorId) {
-      const membro = await this.prisma.user.findFirst({
+      const membro = await this.prisma.membership.findFirst({
         where: {
-          id: editorId,
+          userId: editorId,
           accountId,
           role: { in: [UserRole.owner, UserRole.editor] },
         },
-        select: { id: true },
+        select: { userId: true },
       });
       if (!membro) {
         throw new BadRequestException(
@@ -317,7 +351,7 @@ export class VideosService {
   /**
    * Busca um video garantindo que ele pertence (via projeto) a conta.
    */
-  private async getOwnedVideo(accountId: string, id: string) {
+  private async getOwnedVideo(accountId: string, id: string, user: AuthUser) {
     const video = await this.prisma.video.findUnique({
       where: { id },
       include: { project: { select: { accountId: true } } },
@@ -328,6 +362,7 @@ export class VideosService {
     if (video.project.accountId !== accountId) {
       throw new ForbiddenException('Video nao pertence a esta conta');
     }
+    await assertProjectAccess(this.prisma, video.projectId, user);
     return video;
   }
 
@@ -360,7 +395,11 @@ export class VideosService {
     }
   }
 
-  private async assertProjectOwnership(accountId: string, projectId: string) {
+  private async assertProjectOwnership(
+    accountId: string,
+    projectId: string,
+    user: AuthUser,
+  ) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, accountId },
       select: { id: true },
@@ -370,5 +409,6 @@ export class VideosService {
         'Projeto nao encontrado ou nao pertence a esta conta',
       );
     }
+    await assertProjectAccess(this.prisma, projectId, user);
   }
 }

@@ -50,7 +50,7 @@ export class UsersController {
       'Atualiza os dados do proprio usuario logado (nome/email/foto). Envia so os campos que devem mudar.',
   })
   updateMe(@CurrentUser() user: AuthUser, @Body() dto: UpdateMeDto) {
-    return this.usersService.updateMe(user.id, dto);
+    return this.usersService.updateMe(user.id, user.accountId, dto);
   }
 
   @Post('photo-upload-url')

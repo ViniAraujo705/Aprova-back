@@ -7,12 +7,14 @@ import { InviteStatus, Plan, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PLAN_LIMITS, PlanLimits } from './plan-limits.config';
 
-export type PlanFeature = 'whiteLabel' | 'pdfReports' | 'priorityQueue';
+export type PlanFeature =
+  'whiteLabel' | 'pdfReports' | 'priorityQueue' | 'teamPerformance';
 
 const FEATURE_LABELS: Record<PlanFeature, string> = {
   whiteLabel: 'marca propria (white-label)',
   pdfReports: 'relatorios em PDF',
   priorityQueue: 'prioridade na fila de processamento',
+  teamPerformance: 'desempenho da equipe',
 };
 
 @Injectable()
@@ -130,7 +132,7 @@ export class PlansService {
   /** Editores ativos + convites pendentes (owners nao contam no limite). */
   private async countExtraEditors(accountId: string): Promise<number> {
     const [activeEditors, pendingInvites] = await Promise.all([
-      this.prisma.user.count({
+      this.prisma.membership.count({
         where: { accountId, role: UserRole.editor },
       }),
       this.prisma.invite.count({

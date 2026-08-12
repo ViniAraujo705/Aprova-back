@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertProjectAccess } from '../common/project-access.util';
+import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { PdfService } from './pdf.service';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -24,7 +26,9 @@ export class ProjectReportService {
   async generate(
     accountId: string,
     projectId: string,
+    user: AuthUser,
   ): Promise<{ buffer: Buffer; filename: string }> {
+    await assertProjectAccess(this.prisma, projectId, user);
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, accountId },
       select: {

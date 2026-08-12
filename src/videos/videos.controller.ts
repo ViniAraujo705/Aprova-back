@@ -52,7 +52,7 @@ export class VideosController {
       'Registra o vídeo e dispara em background a geração de thumbnail + versão otimizada (status_processamento inicia em "processando").',
   })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateVideoDto) {
-    return this.videosService.create(user.accountId, dto);
+    return this.videosService.create(user.accountId, dto, user);
   }
 
   @Post(':id/new-version')
@@ -61,7 +61,7 @@ export class VideosController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: NewVersionDto,
   ) {
-    return this.videosService.createNewVersion(user.accountId, id, dto);
+    return this.videosService.createNewVersion(user.accountId, id, dto, user);
   }
 
   @Get()
@@ -78,6 +78,7 @@ export class VideosController {
       query.project_id,
       query.page,
       query.limit,
+      user,
     );
   }
 
@@ -87,7 +88,12 @@ export class VideosController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateStatusDto,
   ) {
-    return this.videosService.updateStatus(user.accountId, id, dto.status);
+    return this.videosService.updateStatus(
+      user.accountId,
+      id,
+      dto.status,
+      user,
+    );
   }
 
   @Patch(':id/etapa')
@@ -100,7 +106,7 @@ export class VideosController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateEtapaDto,
   ) {
-    return this.videosService.updateEtapa(user.accountId, id, dto.etapa);
+    return this.videosService.updateEtapa(user.accountId, id, dto.etapa, user);
   }
 
   @Patch(':id/deadline')
@@ -114,7 +120,7 @@ export class VideosController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateDeadlineDto,
   ) {
-    return this.videosService.updateDeadline(user.accountId, id, dto);
+    return this.videosService.updateDeadline(user.accountId, id, dto, user);
   }
 
   @Patch(':id/titulo')
@@ -123,7 +129,7 @@ export class VideosController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateTituloDto,
   ) {
-    return this.videosService.updateTitulo(user.accountId, id, dto);
+    return this.videosService.updateTitulo(user.accountId, id, dto, user);
   }
 
   @Patch(':id/editor-responsavel')
@@ -141,6 +147,7 @@ export class VideosController {
       user.accountId,
       id,
       dto.editorId,
+      user,
     );
   }
 

@@ -170,9 +170,9 @@ export class RecordingEventsService {
       }
     }
     if (dto.membroId) {
-      const membro = await this.prisma.user.findFirst({
-        where: { id: dto.membroId, accountId },
-        select: { id: true },
+      const membro = await this.prisma.membership.findFirst({
+        where: { userId: dto.membroId, accountId },
+        select: { userId: true },
       });
       if (!membro) {
         throw new BadRequestException('membroId invalido');

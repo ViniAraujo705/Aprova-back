@@ -68,16 +68,16 @@ export class PortfolioProfileService {
       where: { id: accountId },
       select: {
         nomeAgencia: true,
-        users: {
+        memberships: {
           where: { role: UserRole.owner },
-          select: { nome: true },
+          select: { user: { select: { nome: true } } },
           orderBy: { criadoEm: 'asc' },
           take: 1,
         },
       },
     });
     const agencyName = account.nomeAgencia.trim();
-    return agencyName || (account.users[0]?.nome ?? '');
+    return agencyName || (account.memberships[0]?.user.nome ?? '');
   }
 
   async update(accountId: string, dto: UpdatePortfolioProfileDto) {

@@ -69,12 +69,12 @@ export class NotificationsService {
         return;
       }
 
-      const owners = await this.prisma.user.findMany({
+      const owners = await this.prisma.membership.findMany({
         where: { accountId: video.project.accountId, role: UserRole.owner },
-        select: { id: true },
+        select: { userId: true },
       });
 
-      const recipientIds = new Set(owners.map((o) => o.id));
+      const recipientIds = new Set(owners.map((o) => o.userId));
       if (video.editorResponsavelId) {
         recipientIds.add(video.editorResponsavelId);
       }
@@ -179,16 +179,16 @@ export class NotificationsService {
       }
 
       for (const event of events) {
-        const owners = await this.prisma.user.findMany({
+        const owners = await this.prisma.membership.findMany({
           where: { accountId: event.accountId, role: UserRole.owner },
-          select: { id: true },
+          select: { userId: true },
         });
         const crewUserIds = event.equipe
           .map((e) => e.crewMember.userId)
           .filter((userId): userId is string => userId !== null);
 
         const recipientIds = new Set([
-          ...owners.map((owner) => owner.id),
+          ...owners.map((owner) => owner.userId),
           ...crewUserIds,
         ]);
         if (recipientIds.size === 0) {

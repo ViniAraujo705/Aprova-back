@@ -2,12 +2,15 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -62,5 +65,15 @@ export class AdminController {
   @Get('videos/errors')
   listErrorVideos() {
     return this.adminService.listErrorVideos();
+  }
+
+  @Post('videos/:id/reprocess')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Reenfileira thumbnail + versao otimizada para um video travado em statusProcessamento=erro. 409 se o video nao estiver em erro.',
+  })
+  reprocessVideo(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    return this.adminService.reprocessVideo(id);
   }
 }

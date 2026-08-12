@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { OnboardingService } from './onboarding.service';
 import { SessionsModule } from '../sessions/sessions.module';
+import { SelectAccountGuard } from './guards/select-account.guard';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { SessionsModule } from '../sessions/sessions.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, OnboardingService],
+  providers: [AuthService, JwtStrategy, OnboardingService, SelectAccountGuard],
   exports: [AuthService],
 })
 export class AuthModule {}

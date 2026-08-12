@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { UserRole, VideoStatus } from '@prisma/client';
+import { UserRole, UserStatus, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type Faixa = 'verde' | 'amarelo' | 'laranja' | 'vermelho' | 'sem_dados';
@@ -25,10 +25,11 @@ export class TeamService {
    * aprovados atribuidos, tenham nota ou nao.
    */
   async getPerformance(accountId: string): Promise<EditorPerformance[]> {
-    const editores = await this.prisma.user.findMany({
-      where: { accountId, role: UserRole.editor },
-      select: { id: true, nome: true },
+    const memberships = await this.prisma.membership.findMany({
+      where: { accountId, role: UserRole.editor, status: UserStatus.ativo },
+      select: { user: { select: { id: true, nome: true } } },
     });
+    const editores = memberships.map((m) => m.user);
     if (editores.length === 0) {
       return [];
     }

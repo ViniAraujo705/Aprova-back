@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
   Req,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
@@ -18,7 +20,14 @@ import { ConfirmEmailDto } from './dto/confirm-email.dto';
 import { ResendConfirmationDto } from './dto/resend-confirmation.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { AppleLoginDto } from './dto/apple-login.dto';
+import { SelectAccountDto } from './dto/select-account.dto';
 import { sessionMetaFrom } from '../sessions/session-meta.util';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import {
+  SelectAccountGuard,
+  SelectAccountRequestUser,
+} from './guards/select-account.guard';
+import { CurrentUser, AuthUser } from './decorators/current-user.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -104,5 +113,35 @@ export class AuthController {
   })
   resendConfirmation(@Body() dto: ResendConfirmationDto) {
     return this.authService.resendConfirmation(dto);
+  }
+
+  @Post('select-account')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(SelectAccountGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Finaliza a escolha de conta ativa apos um login com 2+ agencias (usando o pendingToken), ou troca a conta ativa de quem ja esta logado (usando o token completo).',
+  })
+  selectAccount(@Body() dto: SelectAccountDto, @Req() req: Request) {
+    const user = (req as Request & { user: SelectAccountRequestUser }).user;
+    return this.authService.selectAccount(
+      user.sub,
+      dto.accountId,
+      sessionMetaFrom(req),
+      user.sessionId,
+    );
+  }
+
+  @Get('my-accounts')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Lista as agencias ativas vinculadas ao usuario logado, para o seletor de conta.',
+  })
+  myAccounts(@CurrentUser() user: AuthUser) {
+    return this.authService.myAccounts(user.id, user.accountId);
   }
 }

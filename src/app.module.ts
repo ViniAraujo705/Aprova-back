@@ -30,11 +30,14 @@ import { BillingModule } from './billing/billing.module';
 import { RecordingEventsModule } from './recording-events/recording-events.module';
 import { CrewModule } from './crew/crew.module';
 import { DemandasModule } from './demandas/demandas.module';
+import { bullmqConnectionFactory } from './queue/bullmq-connection';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     // Cron dos lembretes de gravacao (NotificationsService.sendRecordingReminders).
+    // So no processo web (AppModule) - o worker (WorkerModule) e dedicado a
+    // processamento de video e nao precisa desse job.
     ScheduleModule.forRoot(),
     // Rate limiting global (protege login e rotas publicas contra abuso).
     // Limite elevado de 60 -> 120/min: navegacao normal do dashboard
@@ -49,17 +52,11 @@ import { DemandasModule } from './demandas/demandas.module';
       },
     ]),
     // Fila assíncrona (BullMQ + Redis) usada no processamento de vídeo.
+    // Este processo (web) so enfileira jobs; quem consome roda em
+    // WorkerModule (src/main-worker.ts), processo separado.
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: {
-          host: config.get<string>('REDIS_HOST') ?? '127.0.0.1',
-          port: config.get<number>('REDIS_PORT') ?? 6379,
-          password: config.get<string>('REDIS_PASSWORD') || undefined,
-          // Exigido pelo BullMQ ao usar workers/blocking commands
-          maxRetriesPerRequest: null,
-        },
-      }),
+      useFactory: bullmqConnectionFactory,
     }),
     PrismaModule,
     StorageModule,

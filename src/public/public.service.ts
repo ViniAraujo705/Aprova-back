@@ -46,9 +46,9 @@ export class PublicService {
         account: {
           select: {
             nomeAgencia: true,
-            users: {
+            memberships: {
               where: { role: UserRole.owner },
-              select: { logoUrl: true, corDestaque: true },
+              select: { user: { select: { logoUrl: true, corDestaque: true } } },
               orderBy: { criadoEm: 'asc' },
               take: 1,
             },
@@ -84,8 +84,8 @@ export class PublicService {
       },
       agencia: {
         nome: project.account.nomeAgencia,
-        logoUrl: project.account.users[0]?.logoUrl ?? null,
-        corDestaque: project.account.users[0]?.corDestaque ?? null,
+        logoUrl: project.account.memberships[0]?.user.logoUrl ?? null,
+        corDestaque: project.account.memberships[0]?.user.corDestaque ?? null,
       },
       videos: project.videos.map((v) => ({
         id: v.id,
@@ -119,9 +119,9 @@ export class PublicService {
         account: {
           select: {
             nomeAgencia: true,
-            users: {
+            memberships: {
               where: { role: UserRole.owner },
-              select: { logoUrl: true, corDestaque: true },
+              select: { user: { select: { logoUrl: true, corDestaque: true } } },
               orderBy: { criadoEm: 'asc' },
               take: 1,
             },
@@ -160,8 +160,8 @@ export class PublicService {
       cliente: clienteBranding ? { branding: clienteBranding } : null,
       agencia: {
         nome: portfolio.account.nomeAgencia,
-        logoUrl: portfolio.account.users[0]?.logoUrl ?? null,
-        corDestaque: portfolio.account.users[0]?.corDestaque ?? null,
+        logoUrl: portfolio.account.memberships[0]?.user.logoUrl ?? null,
+        corDestaque: portfolio.account.memberships[0]?.user.corDestaque ?? null,
       },
       videos: portfolio.videos.map((v) => ({
         id: v.id,
@@ -191,9 +191,9 @@ export class PublicService {
         account: {
           select: {
             nomeAgencia: true,
-            users: {
+            memberships: {
               where: { role: UserRole.owner },
-              select: { logoUrl: true, corDestaque: true },
+              select: { user: { select: { logoUrl: true, corDestaque: true } } },
               orderBy: { criadoEm: 'asc' },
               take: 1,
             },
@@ -255,8 +255,8 @@ export class PublicService {
       fotoUrl: profile.fotoUrl,
       agencia: {
         nome: profile.account.nomeAgencia,
-        logoUrl: profile.account.users[0]?.logoUrl ?? null,
-        corDestaque: profile.account.users[0]?.corDestaque ?? null,
+        logoUrl: profile.account.memberships[0]?.user.logoUrl ?? null,
+        corDestaque: profile.account.memberships[0]?.user.corDestaque ?? null,
       },
       categorias,
     };
@@ -368,8 +368,8 @@ export class PublicService {
       // conta; logo/cor vem do owner da agencia.
       agencia: {
         nome: video.project.account.nomeAgencia,
-        logoUrl: video.project.account.users[0]?.logoUrl ?? null,
-        corDestaque: video.project.account.users[0]?.corDestaque ?? null,
+        logoUrl: video.project.account.memberships[0]?.user.logoUrl ?? null,
+        corDestaque: video.project.account.memberships[0]?.user.corDestaque ?? null,
       },
       // Canal ja filtrado para "cliente": isAgencyReply so distingue a
       // resposta do owner (autorType owner) da mensagem do proprio cliente.
@@ -603,9 +603,9 @@ export class PublicService {
                 // Branding (logo/cor) vem do owner da agencia. Pode haver
                 // mais de um owner - usa o mais antigo (fundador) para o
                 // branding ser estavel em vez de depender da ordem do banco.
-                users: {
+                memberships: {
                   where: { role: UserRole.owner },
-                  select: { logoUrl: true, corDestaque: true },
+                  select: { user: { select: { logoUrl: true, corDestaque: true } } },
                   orderBy: { criadoEm: 'asc' },
                   take: 1,
                 },

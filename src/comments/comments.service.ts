@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { CommentAuthorType, CommentChannel, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertProjectAccess } from '../common/project-access.util';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { CreateInternalCommentDto } from './dto/create-internal-comment.dto';
 import { ClientReplyDto } from './dto/client-reply.dto';
@@ -57,8 +58,8 @@ export class CommentsService {
    * Canal INTERNO — lista os comentarios da agencia (owner + editor da
    * mesma conta). Nunca inclui o canal cliente.
    */
-  async listInternal(accountId: string, videoId: string) {
-    await this.assertVideoInAccount(accountId, videoId);
+  async listInternal(accountId: string, videoId: string, user: AuthUser) {
+    await this.assertVideoInAccount(accountId, videoId, user);
     const comments = await this.prisma.comment.findMany({
       where: { videoId, channel: CommentChannel.interno },
       orderBy: [{ timestampVideo: 'asc' }, { criadoEm: 'asc' }],
@@ -76,7 +77,7 @@ export class CommentsService {
     videoId: string,
     dto: CreateInternalCommentDto,
   ) {
-    await this.assertVideoInAccount(accountId, videoId);
+    await this.assertVideoInAccount(accountId, videoId, author);
     await this.assertParent(videoId, CommentChannel.interno, dto.parentId);
 
     const comment = await this.prisma.comment.create({
@@ -108,7 +109,7 @@ export class CommentsService {
     videoId: string,
     dto: ClientReplyDto,
   ) {
-    await this.assertVideoInAccount(accountId, videoId);
+    await this.assertVideoInAccount(accountId, videoId, owner);
     await this.assertParent(videoId, CommentChannel.cliente, dto.parentId);
 
     const comment = await this.prisma.comment.create({
@@ -134,8 +135,9 @@ export class CommentsService {
     accountId: string,
     videoId: string,
     commentId: string,
+    user: AuthUser,
   ) {
-    await this.assertVideoInAccount(accountId, videoId);
+    await this.assertVideoInAccount(accountId, videoId, user);
     const comment = await this.assertClientComment(videoId, commentId);
     await this.prisma.comment.delete({ where: { id: comment.id } });
   }
@@ -150,8 +152,9 @@ export class CommentsService {
     videoId: string,
     commentId: string,
     dto: MoveCommentDto,
+    user: AuthUser,
   ) {
-    await this.assertVideoInAccount(accountId, videoId);
+    await this.assertVideoInAccount(accountId, videoId, user);
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
       select: {
@@ -172,7 +175,7 @@ export class CommentsService {
       );
     }
     // Garante que o video de destino existe e pertence a mesma conta.
-    await this.assertVideoInAccount(accountId, dto.videoDestinoId);
+    await this.assertVideoInAccount(accountId, dto.videoDestinoId, user);
 
     const moved = await this.prisma.$transaction(async (tx) => {
       await tx.comment.delete({ where: { id: comment.id } });
@@ -216,10 +219,18 @@ export class CommentsService {
    * Garante que o video existe e pertence a conta do usuario autenticado.
    * Base do isolamento por account_id exigido pelos guards.
    */
-  private async assertVideoInAccount(accountId: string, videoId: string) {
+  private async assertVideoInAccount(
+    accountId: string,
+    videoId: string,
+    user: AuthUser,
+  ) {
     const video = await this.prisma.video.findUnique({
       where: { id: videoId },
-      select: { id: true, project: { select: { accountId: true } } },
+      select: {
+        id: true,
+        projectId: true,
+        project: { select: { accountId: true } },
+      },
     });
     if (!video) {
       throw new NotFoundException('Video nao encontrado');
@@ -227,6 +238,7 @@ export class CommentsService {
     if (video.project.accountId !== accountId) {
       throw new ForbiddenException('Video nao pertence a esta conta');
     }
+    await assertProjectAccess(this.prisma, video.projectId, user);
     return video;
   }
 

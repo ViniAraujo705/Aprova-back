@@ -114,7 +114,7 @@ model Account {
   asaasSubscriptionId String?  @unique @map("asaas_subscription_id")
   criadoEm            DateTime @default(now()) @map("criado_em")
 
-  users               User[]
+  memberships         Membership[]
   clients             Client[]
   projects            Project[]
   invites             Invite[]
@@ -130,9 +130,15 @@ model Account {
   @@map("accounts")
 }
 
+// Identidade global (login) do usuario, independente de agencia. O vinculo
+// com cada agencia (papel, status) vive em Membership - um User pode ter
+// zero ou mais Memberships (ver Membership). role/status aqui nao sao mais
+// por-agencia: role so importa para o valor "admin" (staff da plataforma,
+// ver RolesGuard) e status e um banimento global (ver
+// AdminService.setUserStatus), distinto da suspensao dentro de uma agencia
+// especifica (Membership.status, ver AccountService.setMemberStatus).
 model User {
   id                String     @id @default(uuid())
-  accountId         String     @map("account_id")
   nome              String
   email             String     @unique
   // Opcional: contas criadas via login social (Google/Apple) nao tem senha local.
@@ -153,7 +159,7 @@ model User {
   // EmailVerificationToken para contas via email/senha.
   emailVerificadoEm DateTime?  @map("email_verificado_em")
 
-  account                 Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  memberships             Membership[]
   comments                Comment[]
   // Videos em que este usuario (owner ou editor) e o responsavel designado
   videosResponsavel       Video[]
@@ -169,8 +175,29 @@ model User {
   // CrewMember(s) vinculados a esta conta (ver CrewMember.userId)
   crewMemberLinks         CrewMember[]
 
-  @@index([accountId])
   @@map("users")
+}
+
+// Vinculo de um User a uma Account: papel (owner/editor - nunca admin, que e
+// exclusivo do User.role global) e status dentro dessa agencia especifica.
+// Um mesmo User pode ter varios Memberships (multi-agencia) - ver
+// AuthService.resolveMemberships e o fluxo de login/select-account.
+model Membership {
+  id           String     @id @default(uuid())
+  userId       String     @map("user_id")
+  accountId    String     @map("account_id")
+  role         UserRole
+  status       UserStatus @default(ativo)
+  criadoEm     DateTime   @default(now()) @map("criado_em")
+  atualizadoEm DateTime   @updatedAt @map("atualizado_em")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, accountId])
+  @@index([accountId])
+  @@index([userId])
+  @@map("memberships")
 }
 
 // Uma linha por login bem-sucedido (email/senha, Google, Apple ou aceite de

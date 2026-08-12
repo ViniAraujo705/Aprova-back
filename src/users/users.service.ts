@@ -31,7 +31,6 @@ export class UsersService {
           email: true,
           role: true,
           status: true,
-          accountId: true,
           avatarUrl: true,
           logoUrl: true,
           corDestaque: true,
@@ -48,6 +47,9 @@ export class UsersService {
     const { emailVerificadoEm, ...rest } = user;
     return {
       ...toMemberDto(rest),
+      // accountId nao mora mais no User (ver Membership) - vem do contexto
+      // da conta ativa do token (AuthUser.accountId), nao de uma coluna.
+      accountId,
       nomeAgencia: account.nomeAgencia,
       emailVerificado: Boolean(emailVerificadoEm),
     };
@@ -58,7 +60,7 @@ export class UsersService {
    * Nao exige reautenticacao para trocar o email — o JWT identifica o
    * usuario pelo id (ver JwtStrategy), entao a troca nao invalida a sessao.
    */
-  async updateMe(userId: string, dto: UpdateMeDto) {
+  async updateMe(userId: string, accountId: string, dto: UpdateMeDto) {
     if (dto.email !== undefined) {
       const existing = await this.prisma.user.findUnique({
         where: { email: dto.email },
@@ -87,7 +89,6 @@ export class UsersService {
         email: true,
         role: true,
         status: true,
-        accountId: true,
         avatarUrl: true,
         criadoEm: true,
         emailVerificadoEm: true,
@@ -97,6 +98,7 @@ export class UsersService {
     const { emailVerificadoEm, ...rest } = user;
     return {
       ...toMemberDto(rest),
+      accountId,
       emailVerificado: Boolean(emailVerificadoEm),
     };
   }

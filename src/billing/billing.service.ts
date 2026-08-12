@@ -172,17 +172,17 @@ export class BillingService {
   private async getOwner(
     accountId: string,
   ): Promise<{ email: string; nome: string }> {
-    const owner = await this.prisma.user.findFirst({
+    const membership = await this.prisma.membership.findFirst({
       where: { accountId, role: UserRole.owner },
       orderBy: { criadoEm: 'asc' },
-      select: { email: true, nome: true },
+      select: { user: { select: { email: true, nome: true } } },
     });
-    if (!owner) {
+    if (!membership) {
       throw new NotFoundException(
         'Conta sem owner, nao e possivel criar assinatura',
       );
     }
-    return owner;
+    return membership.user;
   }
 
   private buildExternalReference(

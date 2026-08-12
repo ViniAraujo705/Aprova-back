@@ -50,12 +50,12 @@ export class ProjectsController {
 
   @Get()
   findAll(@CurrentUser() user: AuthUser) {
-    return this.projectsService.findAll(user.accountId);
+    return this.projectsService.findAll(user.accountId, user);
   }
 
   @Get(':id')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.projectsService.findOne(user.accountId, id);
+    return this.projectsService.findOne(user.accountId, id, user);
   }
 
   @Get(':id/report')
@@ -73,6 +73,7 @@ export class ProjectsController {
     const { buffer, filename } = await this.projectReportService.generate(
       user.accountId,
       id,
+      user,
     );
     res.set({
       'Content-Type': 'application/pdf',
@@ -88,11 +89,39 @@ export class ProjectsController {
     @Param('id') id: string,
     @Body() dto: UpdateProjectDto,
   ) {
-    return this.projectsService.update(user.accountId, id, dto);
+    return this.projectsService.update(user.accountId, id, dto, user);
   }
 
   @Delete(':id')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.projectsService.remove(user.accountId, id);
+    return this.projectsService.remove(user.accountId, id, user);
+  }
+
+  @Post(':id/members/:memberId')
+  @Roles(UserRole.owner)
+  @ApiOperation({
+    summary:
+      'Owner atribui um editor (ou owner) ao projeto. Idempotente. Retorna a lista de membros do projeto.',
+  })
+  addMember(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('memberId', new ParseUUIDPipe({ version: '4' })) memberId: string,
+  ) {
+    return this.projectsService.addMember(user.accountId, id, memberId);
+  }
+
+  @Delete(':id/members/:memberId')
+  @Roles(UserRole.owner)
+  @ApiOperation({
+    summary:
+      'Owner remove um editor do projeto. Retorna a lista de membros restante.',
+  })
+  removeMember(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('memberId', new ParseUUIDPipe({ version: '4' })) memberId: string,
+  ) {
+    return this.projectsService.removeMember(user.accountId, id, memberId);
   }
 }
