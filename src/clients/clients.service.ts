@@ -1,5 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Client } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Client, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { PlansService } from '../plans/plans.service';
@@ -49,9 +53,15 @@ export class ClientsService {
   async update(accountId: string, id: string, dto: UpdateClientDto) {
     // Garante que o cliente pertence a conta antes de atualizar
     await this.findOwnedClient(accountId, id);
+    const { responsibleId, ...clientData } = dto;
+    const responsavelId = dto.responsavelId ?? responsibleId;
+    await this.assertResponsavelBelongsToAccount(accountId, responsavelId);
     const client = await this.prisma.client.update({
       where: { id },
-      data: dto,
+      data: {
+        ...clientData,
+        ...(responsavelId !== undefined ? { responsavelId } : {}),
+      },
     });
     return this.toResponse(client);
   }
@@ -182,6 +192,28 @@ export class ClientsService {
       throw new NotFoundException('Cliente nao encontrado');
     }
     return client;
+  }
+
+  /** Valida o isolamento multi-tenant antes de atribuir o responsavel. */
+  private async assertResponsavelBelongsToAccount(
+    accountId: string,
+    responsavelId: string | null | undefined,
+  ) {
+    if (!responsavelId) return;
+
+    const membership = await this.prisma.membership.findFirst({
+      where: {
+        accountId,
+        userId: responsavelId,
+        role: { in: [UserRole.owner, UserRole.editor] },
+      },
+      select: { userId: true },
+    });
+    if (!membership) {
+      throw new BadRequestException(
+        'responsavelId invalido ou nao pertence a esta conta',
+      );
+    }
   }
 
   private toResponse(client: Client) {

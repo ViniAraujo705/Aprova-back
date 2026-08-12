@@ -209,6 +209,8 @@ model User {
   projectMemberships      ProjectMember[]
   // Demandas (cards do board Kanban) atribuidas a este usuario
   demandasResponsavel     Demanda[]
+  // Clientes pelos quais este usuario e o responsavel designado
+  clientesResponsavel       Client[]
   // CrewMember(s) vinculados a esta conta (ver CrewMember.userId)
   crewMemberLinks         CrewMember[]
   // Arquivos operacionais do cliente enviados por este usuario (ver ClientFile)
@@ -399,6 +401,9 @@ model Client {
   // Foto do cliente (avatar), exibida no modo "Preview Reels"
   fotoUrl   String? @map("foto_url")
   accountId String  @map("account_id")
+  // Profissional (owner/editor) da agencia responsavel por este cliente.
+  // Null quando ainda nao ha responsavel atribuido.
+  responsavelId String? @map("responsavel_id")
   // Marca dados de exemplo criados no onboarding, para o usuario poder deletar
   isExemplo Boolean @default(false) @map("is_exemplo")
   // Marca propria do cliente (white-label revendido pela agencia): quando
@@ -409,6 +414,7 @@ model Client {
   corDestaque String? @map("cor_destaque")
 
   account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  responsavel     User?            @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
   projects        Project[]
   recordingEvents RecordingEvent[]
   // Albuns de portfolio etiquetados com a marca deste cliente (ver
@@ -419,6 +425,7 @@ model Client {
   files           ClientFile[]
 
   @@index([accountId])
+  @@index([responsavelId])
   @@map("clients")
 }
 
