@@ -25,6 +25,7 @@ import { ResendConfirmationDto } from './dto/resend-confirmation.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { AppleLoginDto } from './dto/apple-login.dto';
 import { toMemberDto } from '../common/dto/team-role.util';
+import { resolveOwnerBranding } from '../common/account-branding.util';
 
 @Injectable()
 export class AuthService {
@@ -554,9 +555,16 @@ export class AuthService {
     meta: SessionMeta,
     existingSessionId?: string,
   ) {
-    const session = existingSessionId
-      ? { id: existingSessionId }
-      : await this.sessions.createSession(user.id, meta);
+    // Branding (white label) da agencia: o painel/cliente precisa disso logo
+    // apos o login, sem depender de uma segunda chamada. Resolvido pelo
+    // OWNER da conta (nao por `user`, que pode ser um editor sem essas
+    // colunas preenchidas) - ver resolveOwnerBranding.
+    const [session, ownerBranding] = await Promise.all([
+      existingSessionId
+        ? Promise.resolve({ id: existingSessionId })
+        : this.sessions.createSession(user.id, meta),
+      resolveOwnerBranding(this.prisma, accountId),
+    ]);
 
     return {
       user: toMemberDto({
@@ -566,11 +574,14 @@ export class AuthService {
         role,
         status: UserStatus.ativo,
         accountId,
-        // Branding (white label) da agencia: o painel/cliente precisa disso
-        // logo apos o login, sem depender de uma segunda chamada.
-        logoUrl: user.logoUrl,
-        corDestaque: user.corDestaque,
+        logoUrl: ownerBranding.logoUrl,
+        corDestaque: ownerBranding.corDestaque,
         nomeAgencia,
+        branding: {
+          logoUrl: ownerBranding.logoUrl,
+          corDestaque: ownerBranding.corDestaque,
+          nomeAgencia,
+        },
         criadoEm: user.criadoEm,
         emailVerificado: Boolean(user.emailVerificadoEm),
       }),

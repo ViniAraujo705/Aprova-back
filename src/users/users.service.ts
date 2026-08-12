@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { PlansService } from '../plans/plans.service';
 import { toMemberDto } from '../common/dto/team-role.util';
+import { resolveOwnerBranding } from '../common/account-branding.util';
 import { UpdateBrandingDto } from './dto/update-branding.dto';
 import { LogoUploadUrlDto } from './dto/logo-upload-url.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
@@ -22,7 +23,7 @@ export class UsersService {
    * da resposta do login (ex.: apos um refresh de pagina).
    */
   async me(userId: string, accountId: string) {
-    const [user, account] = await Promise.all([
+    const [user, account, ownerBranding] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
         select: {
@@ -32,8 +33,6 @@ export class UsersService {
           role: true,
           status: true,
           avatarUrl: true,
-          logoUrl: true,
-          corDestaque: true,
           criadoEm: true,
           emailVerificadoEm: true,
         },
@@ -42,6 +41,9 @@ export class UsersService {
         where: { id: accountId },
         select: { nomeAgencia: true },
       }),
+      // Branding (white label) mora no User do OWNER da conta, nao no
+      // usuario logado (que pode ser um editor) - ver resolveOwnerBranding.
+      resolveOwnerBranding(this.prisma, accountId),
     ]);
 
     const { emailVerificadoEm, ...rest } = user;
@@ -50,7 +52,14 @@ export class UsersService {
       // accountId nao mora mais no User (ver Membership) - vem do contexto
       // da conta ativa do token (AuthUser.accountId), nao de uma coluna.
       accountId,
+      logoUrl: ownerBranding.logoUrl,
+      corDestaque: ownerBranding.corDestaque,
       nomeAgencia: account.nomeAgencia,
+      branding: {
+        logoUrl: ownerBranding.logoUrl,
+        corDestaque: ownerBranding.corDestaque,
+        nomeAgencia: account.nomeAgencia,
+      },
       emailVerificado: Boolean(emailVerificadoEm),
     };
   }

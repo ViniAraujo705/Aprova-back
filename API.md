@@ -106,7 +106,12 @@ Body:
 Resposta `201`:
 ```json
 {
-  "user": { "id": "...", "nome": "Maria Silva", "email": "maria@agencia.com", "teamRole": "owner", "status": "ativo", "accountId": "...", "logoUrl": null, "corDestaque": null, "nomeAgencia": "Agência Maria", "criadoEm": "...", "emailVerificado": false },
+  "user": {
+    "id": "...", "nome": "Maria Silva", "email": "maria@agencia.com", "teamRole": "owner", "status": "ativo", "accountId": "...",
+    "logoUrl": null, "corDestaque": null, "nomeAgencia": "Agência Maria",
+    "branding": { "logoUrl": null, "corDestaque": null, "nomeAgencia": "Agência Maria" },
+    "criadoEm": "...", "emailVerificado": false
+  },
   "access_token": "eyJhbGciOi..."
 }
 ```
@@ -115,8 +120,16 @@ Erros: `409` se já existe conta com o email.
 > `logoUrl`/`corDestaque`/`nomeAgencia` são o branding (white label) da
 > agência — ver [Branding / white label](#branding--white-label-usersme).
 > Vêm em toda resposta de autenticação (`register`, `login`, `google`,
-> `apple`) e também em `GET /users/me`, então o frontend não precisa de uma
-> chamada extra só pra pintar a cor/logo depois do login.
+> `apple`, `select-account`, `account/invite/:token/accept`) e também em
+> `GET /users/me`, então o frontend não precisa de uma chamada extra só pra
+> pintar a cor/logo depois do login — inclusive ao trocar de dispositivo ou
+> reabrir uma sessão. O mesmo trio também vem agrupado em `user.branding`
+> (`{ logoUrl, corDestaque, nomeAgencia }`), redundante com os campos soltos
+> — use o que for mais conveniente no client, os dois sempre têm o mesmo
+> valor. **Resolvido pelo `owner` da conta ativa**, não pelo usuário que
+> está logando — um `editor` vê o branding configurado pelo `owner` da
+> agência, não colunas próprias (que nunca são preenchidas, já que só
+> `owner` pode chamar `PATCH /users/me/branding`).
 
 ### `POST /auth/login`
 Sem autenticação. Rate limit: **5/min**.
@@ -961,6 +974,10 @@ Resposta:
     definir uma via `/auth/forgot-password` antes de tentar de novo.
   - `404` se o convite já foi usado/não existe/foi cancelado. `410 Gone` se
     o convite existe e está `pendente` mas `expiresAt` já passou.
+  - `user` na resposta inclui o branding da agência do convite
+    (`logoUrl`/`corDestaque`/`nomeAgencia` soltos + `user.branding`), mesmo
+    shape de `login`/`register` — ver nota em
+    [`POST /auth/register`](#post-authregister).
 - `cancelInvite`: `:id` é o id do convite (mesmo `id` retornado por
   `invite`). Só cancela convites com status `pendente` (`400` se já foi
   aceito/cancelado). `404` se o convite não existe ou não pertence à
@@ -1058,12 +1075,21 @@ Autenticado — qualquer role (`owner`, `editor`, `admin`).
 
 `GET /users/me` devolve:
 ```json
-{ "id": "...", "nome": "...", "email": "...", "teamRole": "owner", "status": "ativo", "accountId": "...", "fotoUrl": "...", "logoUrl": "...", "corDestaque": "#1E90FF", "nomeAgencia": "Agência Maria", "criadoEm": "...", "emailVerificado": true }
+{
+  "id": "...", "nome": "...", "email": "...", "teamRole": "owner", "status": "ativo", "accountId": "...", "fotoUrl": "...",
+  "logoUrl": "...", "corDestaque": "#1E90FF", "nomeAgencia": "Agência Maria",
+  "branding": { "logoUrl": "...", "corDestaque": "#1E90FF", "nomeAgencia": "Agência Maria" },
+  "criadoEm": "...", "emailVerificado": true
+}
 ```
 Use este endpoint pra restaurar logo/cor/nome da agência num refresh de
-página — o mesmo shape (`logoUrl`/`corDestaque`/`nomeAgencia`) já vem em
-`register`/`login`/`google`/`apple`, então na maioria dos casos não precisa
-chamar `GET /users/me` logo após o login.
+página — o mesmo shape (`logoUrl`/`corDestaque`/`nomeAgencia` soltos e
+agrupados em `branding`) já vem em
+`register`/`login`/`google`/`apple`/`select-account`/
+`account/invite/:token/accept`, então na maioria dos casos não precisa
+chamar `GET /users/me` logo após o login — só útil pra refrescar o estado
+num refresh de página (a sessão guardada no client não perde o objeto
+`user` recebido no login).
 
 Todos os campos do `PATCH` são opcionais — atualiza só o que vier no body.
 Resposta:

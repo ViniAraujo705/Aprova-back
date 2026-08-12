@@ -17,6 +17,7 @@ import { MailService } from '../mail/mail.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { toMemberDto } from '../common/dto/team-role.util';
+import { resolveOwnerBranding } from '../common/account-branding.util';
 import { SessionMeta, SessionsService } from '../sessions/sessions.service';
 import { PlansService } from '../plans/plans.service';
 
@@ -150,7 +151,14 @@ export class AccountService {
       ? await this.acceptInviteForExistingUser(invite, existingUser, dto)
       : await this.acceptInviteForNewUser(invite, dto);
 
-    const session = await this.sessions.createSession(user.id, meta);
+    const [session, account, ownerBranding] = await Promise.all([
+      this.sessions.createSession(user.id, meta),
+      this.prisma.account.findUniqueOrThrow({
+        where: { id: invite.accountId },
+        select: { nomeAgencia: true },
+      }),
+      resolveOwnerBranding(this.prisma, invite.accountId),
+    ]);
 
     return {
       user: toMemberDto({
@@ -160,6 +168,17 @@ export class AccountService {
         role: UserRole.editor,
         status: UserStatus.ativo,
         accountId: invite.accountId,
+        // Branding (white label) da agencia que o convite pertence - mesmo
+        // padrao de AuthService.issueSessionAndToken, pra manter o shape do
+        // `user` identico ao de login/register/select-account.
+        logoUrl: ownerBranding.logoUrl,
+        corDestaque: ownerBranding.corDestaque,
+        nomeAgencia: account.nomeAgencia,
+        branding: {
+          logoUrl: ownerBranding.logoUrl,
+          corDestaque: ownerBranding.corDestaque,
+          nomeAgencia: account.nomeAgencia,
+        },
         criadoEm: user.criadoEm,
       }),
       access_token: this.jwt.sign({
