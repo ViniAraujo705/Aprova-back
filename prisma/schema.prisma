@@ -85,6 +85,41 @@ enum CommentAuthorType {
   cliente
 }
 
+// Tipo de evento registrado na trilha de auditoria do cliente (ver
+// ClientActivity). Append-only - alimenta GET /clients/:id/activity na
+// central do cliente do frontend.
+enum ClientActivityType {
+  video_enviado
+  aprovacao_cliente
+  ajuste_solicitado
+  comentario_cliente
+  resposta_agencia
+  nova_versao
+  arquivo_enviado
+  arquivo_removido
+  // Reservado para uma futura feature de nota interna do cliente - nao
+  // ha campo/rota que emita este tipo ainda.
+  nota_atualizada
+}
+
+// Quem gerou o evento de ClientActivity.
+enum ClientActivityAtorTipo {
+  cliente
+  owner
+  editor
+  sistema
+}
+
+// Categoria do arquivo operacional do cliente (ver ClientFile) - livre,
+// so orienta a exibicao no frontend.
+enum ClientFileCategoria {
+  briefing
+  contrato
+  referencia
+  roteiro
+  outro
+}
+
 // Eventos do cliente que geram notificacao para o owner/editor responsavel.
 enum NotificationType {
   comentario_cliente
@@ -126,6 +161,8 @@ model Account {
   portfolioCategories PortfolioCategory[]
   portfolioProfile    PortfolioProfile?
   demandas            Demanda[]
+  clientActivities    ClientActivity[]
+  clientFiles         ClientFile[]
 
   @@map("accounts")
 }
@@ -174,6 +211,8 @@ model User {
   demandasResponsavel     Demanda[]
   // CrewMember(s) vinculados a esta conta (ver CrewMember.userId)
   crewMemberLinks         CrewMember[]
+  // Arquivos operacionais do cliente enviados por este usuario (ver ClientFile)
+  clientFilesEnviados     ClientFile[]
 
   @@map("users")
 }
@@ -376,9 +415,71 @@ model Client {
   // Portfolio.clienteId) - nao implica posse/restricao de acesso, so marca.
   portfolios      Portfolio[]
   demandas        Demanda[]
+  activities      ClientActivity[]
+  files           ClientFile[]
 
   @@index([accountId])
   @@map("clients")
+}
+
+// Trilha de auditoria append-only do cliente (central do cliente no
+// frontend, GET /clients/:id/activity). Gravada automaticamente pelo
+// backend nos fluxos existentes (upload de video, aprovacao/ajuste do
+// cliente, comentarios, resposta da agencia, arquivos) - nunca criada
+// manualmente pelo frontend.
+model ClientActivity {
+  id        String                 @id @default(uuid())
+  accountId String                 @map("account_id")
+  clienteId String                 @map("cliente_id")
+  tipo      ClientActivityType
+  atorTipo  ClientActivityAtorTipo @map("ator_tipo")
+  // Snapshot de exibicao do autor no momento do evento (nome do
+  // owner/editor, ou nome livre informado pelo cliente sem login).
+  atorNome  String?                @map("ator_nome")
+  videoId   String?                @map("video_id")
+  projectId String?                @map("project_id")
+  arquivoId String?                @map("arquivo_id")
+  descricao String?
+  metadados Json?
+  criadoEm  DateTime               @default(now()) @map("criado_em")
+
+  account Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cliente Client      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  video   Video?      @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  project Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  arquivo ClientFile? @relation(fields: [arquivoId], references: [id], onDelete: SetNull)
+
+  @@index([clienteId, criadoEm])
+  @@index([accountId])
+  @@map("client_activities")
+}
+
+// Arquivo operacional do cliente (briefing, contrato, referencia, roteiro,
+// logo, etc.) - distinto dos videos de aprovacao. Nunca exposto nos links
+// publicos (sem controller/rota sob PublicModule).
+model ClientFile {
+  id           String              @id @default(uuid())
+  accountId    String              @map("account_id")
+  clienteId    String              @map("cliente_id")
+  nomeArquivo  String              @map("nome_arquivo")
+  urlStorage   String              @map("url_storage")
+  mimeType     String              @map("mime_type")
+  // Preenchido pelo backend via HEAD no R2 (headObject), nunca confiado
+  // do valor enviado pelo cliente - ver ClientFilesService.
+  tamanhoBytes Int?                @map("tamanho_bytes")
+  categoria    ClientFileCategoria @default(outro)
+  descricao    String?
+  enviadoPorId String?             @map("enviado_por_id")
+  criadoEm     DateTime            @default(now()) @map("criado_em")
+
+  account    Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cliente    Client           @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  enviadoPor User?            @relation(fields: [enviadoPorId], references: [id], onDelete: SetNull)
+  activities ClientActivity[]
+
+  @@index([clienteId])
+  @@index([accountId])
+  @@map("client_files")
 }
 
 model Project {
@@ -392,10 +493,11 @@ model Project {
   linkPublico String   @unique @default(uuid()) @map("link_publico")
   criadoEm    DateTime @default(now()) @map("criado_em")
 
-  client  Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  account Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  videos  Video[]
-  members ProjectMember[]
+  client     Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  account    Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  videos     Video[]
+  members    ProjectMember[]
+  activities ClientActivity[]
 
   @@index([clientId])
   @@index([accountId])
@@ -445,6 +547,7 @@ model Video {
   notifications     Notification[]
   portfolioVideos   PortfolioVideo[]
   demandas          Demanda[]
+  activities        ClientActivity[]
 
   @@index([projectId])
   @@index([videoPaiId])

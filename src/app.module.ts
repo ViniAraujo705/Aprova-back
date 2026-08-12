@@ -30,6 +30,8 @@ import { BillingModule } from './billing/billing.module';
 import { RecordingEventsModule } from './recording-events/recording-events.module';
 import { CrewModule } from './crew/crew.module';
 import { DemandasModule } from './demandas/demandas.module';
+import { ClientActivityModule } from './client-activity/client-activity.module';
+import { ClientFilesModule } from './client-files/client-files.module';
 import { bullmqConnectionFactory } from './queue/bullmq-connection';
 
 @Module({
@@ -84,6 +86,8 @@ import { bullmqConnectionFactory } from './queue/bullmq-connection';
     RecordingEventsModule,
     CrewModule,
     DemandasModule,
+    ClientActivityModule,
+    ClientFilesModule,
   ],
   providers: [
     {

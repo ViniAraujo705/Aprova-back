@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -25,6 +26,7 @@ import { UpdateClientDto } from './dto/update-client.dto';
 import { ClientPhotoUploadUrlDto } from './dto/client-photo-upload-url.dto';
 import { ClientBrandingLogoUploadUrlDto } from './dto/client-branding-logo-upload-url.dto';
 import { UpdateClientBrandingDto } from './dto/update-client-branding.dto';
+import { ListClientActivityQueryDto } from './dto/list-client-activity-query.dto';
 
 @ApiTags('clients')
 @ApiBearerAuth()
@@ -89,6 +91,24 @@ export class ClientsController {
       user.accountId,
       id,
       dto,
+    );
+  }
+
+  @Get(':id/activity')
+  @ApiOperation({
+    summary:
+      'Trilha de auditoria do cliente (append-only), paginada por cursor - mais recente primeiro.',
+  })
+  getActivity(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query() query: ListClientActivityQueryDto,
+  ) {
+    return this.clientsService.getActivity(
+      user.accountId,
+      id,
+      query.cursor,
+      query.limit,
     );
   }
 

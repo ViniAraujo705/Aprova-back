@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  ClientActivityAtorTipo,
+  ClientActivityType,
   EtapaProducao,
   Plan,
   Prisma,
@@ -19,6 +21,7 @@ import { assertProjectAccess } from '../common/project-access.util';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { StorageService } from '../storage/storage.service';
 import { PlansService } from '../plans/plans.service';
+import { ClientActivityService } from '../client-activity/client-activity.service';
 import { VideoProcessingService } from './processing/video-processing.service';
 import {
   VIDEO_PROCESSING_PRIORITY_DEFAULT,
@@ -41,6 +44,7 @@ export class VideosService {
     private readonly storage: StorageService,
     private readonly processing: VideoProcessingService,
     private readonly plans: PlansService,
+    private readonly clientActivity: ClientActivityService,
     config: ConfigService,
   ) {
     const maxMb =
@@ -54,7 +58,11 @@ export class VideosService {
   }
 
   async create(accountId: string, dto: CreateVideoDto, user: AuthUser) {
-    await this.assertProjectOwnership(accountId, dto.projectId, user);
+    const project = await this.assertProjectOwnership(
+      accountId,
+      dto.projectId,
+      user,
+    );
     await this.plans.assertCanCreateVideo(accountId);
     await this.validateUploadedFile(dto.urlStorage);
 
@@ -89,6 +97,20 @@ export class VideosService {
       video.id,
       await this.processingPriority(accountId),
     );
+
+    await this.clientActivity.log({
+      accountId,
+      clienteId: project.clientId,
+      tipo: ClientActivityType.video_enviado,
+      atorTipo:
+        user.role === UserRole.owner
+          ? ClientActivityAtorTipo.owner
+          : ClientActivityAtorTipo.editor,
+      atorNome: user.nome,
+      videoId: video.id,
+      projectId: dto.projectId,
+      descricao: video.nomeArquivo,
+    });
 
     return video;
   }
@@ -126,6 +148,20 @@ export class VideosService {
       video.id,
       await this.processingPriority(accountId),
     );
+
+    await this.clientActivity.log({
+      accountId,
+      clienteId: pai.project.clientId,
+      tipo: ClientActivityType.nova_versao,
+      atorTipo:
+        user.role === UserRole.owner
+          ? ClientActivityAtorTipo.owner
+          : ClientActivityAtorTipo.editor,
+      atorNome: user.nome,
+      videoId: video.id,
+      projectId: pai.projectId,
+      descricao: video.nomeArquivo,
+    });
 
     return video;
   }
@@ -354,7 +390,7 @@ export class VideosService {
   private async getOwnedVideo(accountId: string, id: string, user: AuthUser) {
     const video = await this.prisma.video.findUnique({
       where: { id },
-      include: { project: { select: { accountId: true } } },
+      include: { project: { select: { accountId: true, clientId: true } } },
     });
     if (!video) {
       throw new NotFoundException('Video nao encontrado');
@@ -402,7 +438,7 @@ export class VideosService {
   ) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, accountId },
-      select: { id: true },
+      select: { id: true, clientId: true },
     });
     if (!project) {
       throw new NotFoundException(
@@ -410,5 +446,6 @@ export class VideosService {
       );
     }
     await assertProjectAccess(this.prisma, projectId, user);
+    return project;
   }
 }

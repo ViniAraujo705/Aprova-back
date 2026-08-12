@@ -4,10 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CommentAuthorType, CommentChannel, UserRole } from '@prisma/client';
+import {
+  ClientActivityAtorTipo,
+  ClientActivityType,
+  CommentAuthorType,
+  CommentChannel,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertProjectAccess } from '../common/project-access.util';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
+import { ClientActivityService } from '../client-activity/client-activity.service';
 import { CreateInternalCommentDto } from './dto/create-internal-comment.dto';
 import { ClientReplyDto } from './dto/client-reply.dto';
 import { MoveCommentDto } from './dto/move-comment.dto';
@@ -52,7 +59,10 @@ function toCommentDto<T extends CommentRow>(comment: T) {
 
 @Injectable()
 export class CommentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly clientActivity: ClientActivityService,
+  ) {}
 
   /**
    * Canal INTERNO — lista os comentarios da agencia (owner + editor da
@@ -109,7 +119,7 @@ export class CommentsService {
     videoId: string,
     dto: ClientReplyDto,
   ) {
-    await this.assertVideoInAccount(accountId, videoId, owner);
+    const video = await this.assertVideoInAccount(accountId, videoId, owner);
     await this.assertParent(videoId, CommentChannel.cliente, dto.parentId);
 
     const comment = await this.prisma.comment.create({
@@ -124,6 +134,18 @@ export class CommentsService {
       },
       select: COMMENT_SELECT,
     });
+
+    await this.clientActivity.log({
+      accountId,
+      clienteId: video.project.clientId,
+      tipo: ClientActivityType.resposta_agencia,
+      atorTipo: ClientActivityAtorTipo.owner,
+      atorNome: owner.nome,
+      videoId,
+      projectId: video.projectId,
+      descricao: dto.texto,
+    });
+
     return toCommentDto(comment);
   }
 
@@ -229,7 +251,7 @@ export class CommentsService {
       select: {
         id: true,
         projectId: true,
-        project: { select: { accountId: true } },
+        project: { select: { accountId: true, clientId: true } },
       },
     });
     if (!video) {

@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ClientActivityAtorTipo,
+  ClientActivityType,
   CommentAuthorType,
   CommentChannel,
   EtapaProducao,
@@ -15,6 +17,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
+import { ClientActivityService } from '../client-activity/client-activity.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { ApproveVideoDto } from './dto/approve-video.dto';
@@ -27,6 +30,7 @@ export class PublicService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly storage: StorageService,
+    private readonly clientActivity: ClientActivityService,
   ) {}
 
   /**
@@ -48,7 +52,9 @@ export class PublicService {
             nomeAgencia: true,
             memberships: {
               where: { role: UserRole.owner },
-              select: { user: { select: { logoUrl: true, corDestaque: true } } },
+              select: {
+                user: { select: { logoUrl: true, corDestaque: true } },
+              },
               orderBy: { criadoEm: 'asc' },
               take: 1,
             },
@@ -121,7 +127,9 @@ export class PublicService {
             nomeAgencia: true,
             memberships: {
               where: { role: UserRole.owner },
-              select: { user: { select: { logoUrl: true, corDestaque: true } } },
+              select: {
+                user: { select: { logoUrl: true, corDestaque: true } },
+              },
               orderBy: { criadoEm: 'asc' },
               take: 1,
             },
@@ -193,7 +201,9 @@ export class PublicService {
             nomeAgencia: true,
             memberships: {
               where: { role: UserRole.owner },
-              select: { user: { select: { logoUrl: true, corDestaque: true } } },
+              select: {
+                user: { select: { logoUrl: true, corDestaque: true } },
+              },
               orderBy: { criadoEm: 'asc' },
               take: 1,
             },
@@ -369,7 +379,8 @@ export class PublicService {
       agencia: {
         nome: video.project.account.nomeAgencia,
         logoUrl: video.project.account.memberships[0]?.user.logoUrl ?? null,
-        corDestaque: video.project.account.memberships[0]?.user.corDestaque ?? null,
+        corDestaque:
+          video.project.account.memberships[0]?.user.corDestaque ?? null,
       },
       // Canal ja filtrado para "cliente": isAgencyReply so distingue a
       // resposta do owner (autorType owner) da mensagem do proprio cliente.
@@ -424,6 +435,16 @@ export class PublicService {
       video.id,
       NotificationType.comentario_cliente,
     );
+    await this.clientActivity.log({
+      accountId: video.project.accountId,
+      clienteId: video.project.clientId,
+      tipo: ClientActivityType.comentario_cliente,
+      atorTipo: ClientActivityAtorTipo.cliente,
+      atorNome: dto.autorNome,
+      videoId: video.id,
+      projectId: video.projectId,
+      descricao: dto.texto ?? null,
+    });
     return comment;
   }
 
@@ -551,6 +572,24 @@ export class PublicService {
         etapaProducao: true,
       },
     });
+
+    const activityTipo =
+      status === VideoStatus.aprovado
+        ? ClientActivityType.aprovacao_cliente
+        : status === VideoStatus.ajuste
+          ? ClientActivityType.ajuste_solicitado
+          : null;
+    if (activityTipo) {
+      await this.clientActivity.log({
+        accountId: video.project.accountId,
+        clienteId: video.project.clientId,
+        tipo: activityTipo,
+        atorTipo: ClientActivityAtorTipo.cliente,
+        videoId: video.id,
+        projectId: video.projectId,
+      });
+    }
+
     return updated;
   }
 
@@ -594,6 +633,7 @@ export class PublicService {
           select: {
             nome: true,
             accountId: true,
+            clientId: true,
             client: {
               select: { nome: true, descricao: true, fotoUrl: true },
             },
@@ -605,7 +645,9 @@ export class PublicService {
                 // branding ser estavel em vez de depender da ordem do banco.
                 memberships: {
                   where: { role: UserRole.owner },
-                  select: { user: { select: { logoUrl: true, corDestaque: true } } },
+                  select: {
+                    user: { select: { logoUrl: true, corDestaque: true } },
+                  },
                   orderBy: { criadoEm: 'asc' },
                   take: 1,
                 },
