@@ -121,6 +121,18 @@ enum ClientFileCategoria {
   outro
 }
 
+// Cores disponiveis para as labels internas do Kanban. O frontend usa estes
+// identificadores para aplicar sua propria paleta visual.
+enum LabelColor {
+  red
+  orange
+  amber
+  emerald
+  sky
+  violet
+  pink
+}
+
 // Eventos do cliente que geram notificacao para o owner/editor responsavel.
 enum NotificationType {
   comentario_cliente
@@ -164,6 +176,7 @@ model Account {
   demandas            Demanda[]
   clientActivities    ClientActivity[]
   clientFiles         ClientFile[]
+  labels              Label[]
 
   @@map("accounts")
 }
@@ -216,6 +229,8 @@ model User {
   crewMemberLinks         CrewMember[]
   // Arquivos operacionais do cliente enviados por este usuario (ver ClientFile)
   clientFilesEnviados     ClientFile[]
+  videoCollaborations     VideoCollaborator[]
+  demandaCollaborations   DemandaCollaborator[]
 
   @@map("users")
 }
@@ -560,6 +575,8 @@ model Video {
   portfolioVideos   PortfolioVideo[]
   demandas          Demanda[]
   activities        ClientActivity[]
+  labels            VideoLabel[]
+  collaborators     VideoCollaborator[]
 
   @@index([projectId])
   @@index([videoPaiId])
@@ -609,12 +626,82 @@ model Demanda {
   responsavel User?   @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
   video       Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
   recordingEvents RecordingEvent[]
+  labels          DemandaLabel[]
+  collaborators   DemandaCollaborator[]
 
   @@index([accountId])
   @@index([clienteId])
   @@index([responsavelId])
   @@index([videoId])
   @@map("demandas")
+}
+
+// Labels compartilhadas por todos os membros de uma agencia. Nao pertencem
+// ao usuario que as criou: Account e o unico escopo de isolamento.
+model Label {
+  id           String     @id @default(uuid())
+  accountId    String     @map("account_id")
+  text         String
+  color        LabelColor
+  criadoEm     DateTime   @default(now()) @map("criado_em")
+  atualizadoEm DateTime   @updatedAt @map("atualizado_em")
+
+  account  Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  videos   VideoLabel[]
+  demandas DemandaLabel[]
+
+  @@index([accountId])
+  @@map("labels")
+}
+
+model VideoLabel {
+  videoId String @map("video_id")
+  labelId String @map("label_id")
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([videoId, labelId])
+  @@index([labelId])
+  @@map("video_labels")
+}
+
+model DemandaLabel {
+  demandaId String @map("demanda_id")
+  labelId   String @map("label_id")
+
+  demanda Demanda @relation(fields: [demandaId], references: [id], onDelete: Cascade)
+  label   Label   @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([demandaId, labelId])
+  @@index([labelId])
+  @@map("demanda_labels")
+}
+
+// Colaborador e uma marcacao informativa de um membro da conta; nao altera
+// o responsavel unico do Video/Demanda.
+model VideoCollaborator {
+  videoId String @map("video_id")
+  userId  String @map("user_id")
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([videoId, userId])
+  @@index([userId])
+  @@map("video_collaborators")
+}
+
+model DemandaCollaborator {
+  demandaId String @map("demanda_id")
+  userId    String @map("user_id")
+
+  demanda Demanda @relation(fields: [demandaId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([demandaId, userId])
+  @@index([userId])
+  @@map("demanda_collaborators")
 }
 
 // Vitrine da agencia: colecao curada manualmente pelo owner, distinta da

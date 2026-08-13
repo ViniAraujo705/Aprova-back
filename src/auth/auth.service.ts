@@ -418,6 +418,13 @@ export class AuthService {
                 { texto: 'Enquadramento', ordem: 2 },
               ],
             },
+            labels: {
+              create: [
+                { text: 'Urgente', color: 'red' },
+                { text: 'Revisão', color: 'amber' },
+                { text: 'Cliente VIP', color: 'violet' },
+              ],
+            },
           },
           select: { id: true },
         });

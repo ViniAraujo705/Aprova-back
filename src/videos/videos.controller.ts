@@ -30,6 +30,7 @@ import { UpdateEtapaDto } from './dto/update-etapa.dto';
 import { UpdateDeadlineDto } from './dto/update-deadline.dto';
 import { UpdateTituloDto } from './dto/update-titulo.dto';
 import { UpdateEditorResponsavelDto } from './dto/update-editor-responsavel.dto';
+import { UpdateKanbanMetadataDto } from './dto/update-kanban-metadata.dto';
 import { ListVideosQueryDto } from './dto/list-videos-query.dto';
 
 @ApiTags('videos')
@@ -147,6 +148,24 @@ export class VideosController {
       user.accountId,
       id,
       dto.editorId,
+      user,
+    );
+  }
+
+  @Patch(':id/kanban-metadata')
+  @ApiOperation({
+    summary:
+      'Substitui labels e/ou colaboradores informativos do card de vídeo. Envie [] para limpar um dos grupos.',
+  })
+  updateKanbanMetadata(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateKanbanMetadataDto,
+  ) {
+    return this.videosService.updateKanbanMetadata(
+      user.accountId,
+      id,
+      dto,
       user,
     );
   }

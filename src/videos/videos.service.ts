@@ -13,6 +13,7 @@ import {
   Plan,
   Prisma,
   UserRole,
+  UserStatus,
   VideoStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -32,8 +33,28 @@ import { CreateVideoDto } from './dto/create-video.dto';
 import { NewVersionDto } from './dto/new-version.dto';
 import { UpdateDeadlineDto } from './dto/update-deadline.dto';
 import { UpdateTituloDto } from './dto/update-titulo.dto';
+import { UpdateKanbanMetadataDto } from './dto/update-kanban-metadata.dto';
 
 const DEFAULT_MAX_VIDEO_SIZE_MB = 2048; // 2 GB
+
+const KANBAN_RELATIONS = {
+  labels: { select: { labelId: true } },
+  collaborators: { select: { userId: true } },
+} as const;
+
+function toVideoDto<
+  T extends {
+    labels: { labelId: string }[];
+    collaborators: { userId: string }[];
+  },
+>(video: T) {
+  const { labels, collaborators, ...rest } = video;
+  return {
+    ...rest,
+    labelIds: labels.map((label) => label.labelId),
+    collaboratorIds: collaborators.map((collaborator) => collaborator.userId),
+  };
+}
 
 @Injectable()
 export class VideosService {
@@ -65,6 +86,11 @@ export class VideosService {
     );
     await this.plans.assertCanCreateVideo(accountId);
     await this.validateUploadedFile(dto.urlStorage);
+    await this.assertKanbanRefsBelongToAccount(
+      accountId,
+      dto.labelIds,
+      dto.collaboratorIds,
+    );
 
     // Se a versao nao for informada, calcula a proxima do projeto
     let versao = dto.versao;
@@ -85,9 +111,24 @@ export class VideosService {
           nomeArquivo: dto.nomeArquivo,
           versao,
           linkPublico,
+          ...(dto.labelIds
+            ? {
+                labels: {
+                  create: dto.labelIds.map((labelId) => ({ labelId })),
+                },
+              }
+            : {}),
+          ...(dto.collaboratorIds
+            ? {
+                collaborators: {
+                  create: dto.collaboratorIds.map((userId) => ({ userId })),
+                },
+              }
+            : {}),
           // status default = pendente (schema)
           // status_processamento default = processando (schema)
         },
+        include: KANBAN_RELATIONS,
       }),
     );
 
@@ -112,7 +153,7 @@ export class VideosService {
       descricao: video.nomeArquivo,
     });
 
-    return video;
+    return toVideoDto(video);
   }
 
   /**
@@ -140,6 +181,7 @@ export class VideosService {
           videoPaiId: pai.id,
           linkPublico,
         },
+        include: KANBAN_RELATIONS,
       }),
     );
 
@@ -163,7 +205,7 @@ export class VideosService {
       descricao: video.nomeArquivo,
     });
 
-    return video;
+    return toVideoDto(video);
   }
 
   /**
@@ -206,6 +248,7 @@ export class VideosService {
         skip: (page - 1) * limit,
         take: limit,
         include: {
+          ...KANBAN_RELATIONS,
           videoPai: {
             select: { id: true, versao: true, nomeArquivo: true },
           },
@@ -218,7 +261,7 @@ export class VideosService {
     ]);
 
     return {
-      data,
+      data: data.map(toVideoDto),
       total,
       page,
       limit,
@@ -324,6 +367,44 @@ export class VideosService {
     });
   }
 
+  async updateKanbanMetadata(
+    accountId: string,
+    id: string,
+    dto: UpdateKanbanMetadataDto,
+    user: AuthUser,
+  ) {
+    await this.getOwnedVideo(accountId, id, user);
+    await this.assertKanbanRefsBelongToAccount(
+      accountId,
+      dto.labelIds,
+      dto.collaboratorIds,
+    );
+
+    const video = await this.prisma.video.update({
+      where: { id },
+      data: {
+        ...(dto.labelIds !== undefined
+          ? {
+              labels: {
+                deleteMany: {},
+                create: dto.labelIds.map((labelId) => ({ labelId })),
+              },
+            }
+          : {}),
+        ...(dto.collaboratorIds !== undefined
+          ? {
+              collaborators: {
+                deleteMany: {},
+                create: dto.collaboratorIds.map((userId) => ({ userId })),
+              },
+            }
+          : {}),
+      },
+      include: KANBAN_RELATIONS,
+    });
+    return toVideoDto(video);
+  }
+
   /**
    * Exclui o video (comentarios/ratings caem em cascata via schema) e os
    * arquivos correspondentes no R2. Bloqueia com 409 se houver versoes
@@ -400,6 +481,49 @@ export class VideosService {
     }
     await assertProjectAccess(this.prisma, video.projectId, user);
     return video;
+  }
+
+  /** Confirma que labels e membros informativos pertencem a esta agencia. */
+  private async assertKanbanRefsBelongToAccount(
+    accountId: string,
+    labelIds?: string[],
+    collaboratorIds?: string[],
+  ): Promise<void> {
+    const checks: Promise<void>[] = [];
+    if (labelIds && labelIds.length > 0) {
+      checks.push(
+        this.prisma.label
+          .count({ where: { accountId, id: { in: labelIds } } })
+          .then((count) => {
+            if (count !== labelIds.length) {
+              throw new BadRequestException(
+                'labelIds contem label invalida ou de outra conta',
+              );
+            }
+          }),
+      );
+    }
+    if (collaboratorIds && collaboratorIds.length > 0) {
+      checks.push(
+        this.prisma.membership
+          .count({
+            where: {
+              accountId,
+              userId: { in: collaboratorIds },
+              role: { in: [UserRole.owner, UserRole.editor] },
+              status: UserStatus.ativo,
+            },
+          })
+          .then((count) => {
+            if (count !== collaboratorIds.length) {
+              throw new BadRequestException(
+                'collaboratorIds contem membro invalido ou de outra conta',
+              );
+            }
+          }),
+      );
+    }
+    await Promise.all(checks);
   }
 
   /**

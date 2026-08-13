@@ -1,4 +1,6 @@
 import {
+  ArrayUnique,
+  IsArray,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -25,4 +27,19 @@ export class CreateVideoDto {
   @IsInt()
   @Min(1)
   versao?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', { each: true, message: 'labelIds deve conter UUIDs validos' })
+  labelIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', {
+    each: true,
+    message: 'collaboratorIds deve conter UUIDs validos',
+  })
+  collaboratorIds?: string[];
 }
