@@ -63,6 +63,7 @@ enum ProcessamentoStatus {
 enum PortfolioMediaType {
   video
   foto
+  design
 }
 
 enum InviteStatus {
@@ -678,6 +679,10 @@ model PortfolioProfile {
   accountId    String   @unique @map("account_id")
   fotoUrl      String?  @map("foto_url")
   linkHub      String   @unique @map("link_hub")
+  // Tema cosmetico opcional. String preserva os IDs publicos do frontend,
+  // inclusive "editorial-escuro", que nao e um identificador valido de enum
+  // no Prisma. A whitelist fica no DTO.
+  templateId   String?  @map("template_id")
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
 

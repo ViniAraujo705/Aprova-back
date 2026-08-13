@@ -5,8 +5,10 @@ import {
 } from '@nestjs/common';
 import { RecordingEventTipo } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateRecordingEventDto } from './dto/create-recording-event.dto';
 import { UpdateRecordingEventDto } from './dto/update-recording-event.dto';
+import { NotifyRecordingEventDto } from './dto/notify-recording-event.dto';
 
 const RECORDING_EVENT_SELECT = {
   id: true,
@@ -56,7 +58,10 @@ function dedupe(ids: string[]): string[] {
 
 @Injectable()
 export class RecordingEventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async create(accountId: string, dto: CreateRecordingEventDto) {
     await this.assertRefsBelongToAccount(accountId, dto);
@@ -97,6 +102,13 @@ export class RecordingEventsService {
   }
 
   async findOne(accountId: string, id: string) {
+    return toDto(await this.findRaw(accountId, id));
+  }
+
+  private async findRaw(
+    accountId: string,
+    id: string,
+  ): Promise<RawRecordingEvent> {
     const event = await this.prisma.recordingEvent.findFirst({
       where: { id, accountId },
       select: RECORDING_EVENT_SELECT,
@@ -104,7 +116,7 @@ export class RecordingEventsService {
     if (!event) {
       throw new NotFoundException('Evento de gravacao nao encontrado');
     }
-    return toDto(event);
+    return event;
   }
 
   async update(accountId: string, id: string, dto: UpdateRecordingEventDto) {
@@ -160,9 +172,39 @@ export class RecordingEventsService {
   }
 
   async remove(accountId: string, id: string) {
-    await this.findOne(accountId, id);
+    await this.findRaw(accountId, id);
     await this.prisma.recordingEvent.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  async notify(
+    accountId: string,
+    id: string,
+    dto: NotifyRecordingEventDto,
+  ): Promise<{ notificados: number }> {
+    const event = await this.findRaw(accountId, id);
+    const requestedIds = dedupe(dto.equipeIds);
+    const crewById = new Map(
+      event.equipe.map(({ crewMember }) => [crewMember.id, crewMember]),
+    );
+    const invalidId = requestedIds.find(
+      (crewMemberId) => !crewById.has(crewMemberId),
+    );
+    if (invalidId) {
+      throw new BadRequestException(
+        'equipeIds deve conter apenas membros vinculados ao evento',
+      );
+    }
+
+    const userIds = requestedIds
+      .map((crewMemberId) => crewById.get(crewMemberId)?.userId)
+      .filter((userId): userId is string => !!userId);
+    const notificados = await this.notifications.notifyRecordingEvent(
+      accountId,
+      event.id,
+      userIds,
+    );
+    return { notificados };
   }
 
   /**

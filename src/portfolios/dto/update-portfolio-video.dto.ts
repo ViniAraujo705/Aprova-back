@@ -1,6 +1,11 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { PortfolioMediaType } from '@prisma/client';
 
 export class UpdatePortfolioVideoDto {
+  @IsOptional()
+  @IsIn(Object.values(PortfolioMediaType), { message: 'tipoMidia invalido' })
+  tipoMidia?: PortfolioMediaType;
+
   @IsOptional()
   @IsString()
   @IsNotEmpty()

@@ -198,11 +198,11 @@ export class PortfoliosService {
   }
 
   /**
-   * Registra, direto no portfolio, um video ou foto enviado pelo passo de
-   * upload-url - sem projeto/cliente por tras. Foto nao passa pelo pipeline
-   * de thumbnail/otimizacao: a propria foto vira `posterUrl` (thumbnail e
-   * tela cheia sao a mesma imagem) e `urlStorage` do item fica null - so
-   * video enfileira processamento em background.
+   * Registra, direto no portfolio, uma midia enviada pelo passo de
+   * upload-url - sem projeto/cliente por tras. Foto e design nao passam pelo
+   * pipeline de thumbnail/otimizacao: a propria imagem vira `posterUrl`
+   * (thumbnail e tela cheia sao a mesma imagem) e `urlStorage` do item fica
+   * null - so video enfileira processamento em background.
    */
   async uploadComplete(
     accountId: string,
@@ -213,21 +213,21 @@ export class PortfoliosService {
     await this.validateUploadedFile(dto.urlStorage);
 
     const ordem = await this.nextOrdem(portfolioId);
-    const isFoto = dto.tipoMidia === PortfolioMediaType.foto;
+    const isImage = dto.tipoMidia !== PortfolioMediaType.video;
     const portfolioVideo = await this.prisma.portfolioVideo.create({
       data: {
         portfolioId,
         tipoMidia: dto.tipoMidia,
         titulo: dto.titulo || dto.nomeArquivo,
         descricao: dto.descricao ?? null,
-        urlStorage: isFoto ? null : dto.urlStorage,
-        posterUrl: isFoto ? dto.urlStorage : null,
-        statusProcessamento: isFoto ? 'pronto' : 'processando',
+        urlStorage: isImage ? null : dto.urlStorage,
+        posterUrl: isImage ? dto.urlStorage : null,
+        statusProcessamento: isImage ? 'pronto' : 'processando',
         ordem,
       },
     });
 
-    if (!isFoto) {
+    if (!isImage) {
       await this.processing.enqueue(
         'portfolioVideo',
         portfolioVideo.id,
@@ -411,7 +411,7 @@ export class PortfoliosService {
       titulo: v.titulo,
       descricao: v.descricao,
       // Sempre a versao "pronta pra tocar": a otimizada quando ja existe,
-      // senao o arquivo original. Null pra foto (a imagem em si vive em
+      // senao o arquivo original. Null pra foto/design (a imagem em si vive em
       // posterUrl - ver uploadComplete).
       urlStorage: v.urlOtimizada ?? v.urlStorage,
       posterUrl: v.posterUrl,

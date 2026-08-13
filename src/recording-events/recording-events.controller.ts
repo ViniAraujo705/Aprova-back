@@ -21,6 +21,7 @@ import {
 import { RecordingEventsService } from './recording-events.service';
 import { CreateRecordingEventDto } from './dto/create-recording-event.dto';
 import { UpdateRecordingEventDto } from './dto/update-recording-event.dto';
+import { NotifyRecordingEventDto } from './dto/notify-recording-event.dto';
 
 @ApiTags('recording-events')
 @ApiBearerAuth()
@@ -53,6 +54,18 @@ export class RecordingEventsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ) {
     return this.recordingEventsService.findOne(user.accountId, id);
+  }
+
+  @Post(':id/notify')
+  @ApiOperation({
+    summary: 'Envia lembrete in-app para a equipe vinculada ao evento.',
+  })
+  notify(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: NotifyRecordingEventDto,
+  ) {
+    return this.recordingEventsService.notify(user.accountId, id, dto);
   }
 
   @Patch(':id')

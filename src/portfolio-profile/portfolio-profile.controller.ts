@@ -38,7 +38,7 @@ export class PortfolioProfileController {
   @Get()
   @ApiOperation({
     summary:
-      'Perfil do hub publico (fotoUrl + linkHub). linkHub e gerado automaticamente na primeira leitura.',
+      'Perfil do hub publico (fotoUrl, linkHub e templateId). linkHub e gerado automaticamente na primeira leitura.',
   })
   get(@CurrentUser() user: AuthUser) {
     return this.portfolioProfileService.getOrCreate(user.accountId);

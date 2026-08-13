@@ -145,6 +145,31 @@ export class NotificationsService {
   }
 
   /**
+   * Aviso manual para a equipe vinculada a um RecordingEvent. O indice unico
+   * de lembretes torna o botao idempotente e evita repetir o aviso que o
+   * cron possa ter criado antes.
+   */
+  async notifyRecordingEvent(
+    accountId: string,
+    recordingEventId: string,
+    userIds: string[],
+  ): Promise<number> {
+    const recipientIds = [...new Set(userIds)];
+    if (recipientIds.length === 0) return 0;
+
+    const result = await this.prisma.notification.createMany({
+      data: recipientIds.map((userId) => ({
+        accountId,
+        userId,
+        recordingEventId,
+        type: NotificationType.lembrete_gravacao,
+      })),
+      skipDuplicates: true,
+    });
+    return result.count;
+  }
+
+  /**
    * Cron: lembra de uma gravacao (RecordingEvent) que comeca em ate 24h.
    * Destinatarios: todo owner da conta (sempre) + cada CrewMember escalado
    * no evento que tenha userId (a pessoa vinculada a uma conta real, seja

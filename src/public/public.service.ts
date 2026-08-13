@@ -196,6 +196,7 @@ export class PublicService {
       where: { linkHub },
       select: {
         fotoUrl: true,
+        templateId: true,
         account: {
           select: {
             nomeAgencia: true,
@@ -263,6 +264,7 @@ export class PublicService {
 
     return {
       fotoUrl: profile.fotoUrl,
+      templateId: profile.templateId,
       agencia: {
         nome: profile.account.nomeAgencia,
         logoUrl: profile.account.memberships[0]?.user.logoUrl ?? null,
@@ -274,18 +276,27 @@ export class PublicService {
 
   /**
    * Maioria simples de tipoMidia entre os itens do album; empate (ou album
-   * vazio) cai pra "video" (padrao pedido pelo frontend pro filtro
-   * foto/video do hub publico).
+   * vazio) cai pra "video". Design e um terceiro tipo de imagem com rotulo
+   * proprio, portanto nao e normalizado para foto.
    */
   private predominantMediaType(
     items: { tipoMidia: PortfolioMediaType }[],
   ): PortfolioMediaType {
-    const fotoCount = items.filter(
-      (item) => item.tipoMidia === PortfolioMediaType.foto,
-    ).length;
-    const videoCount = items.length - fotoCount;
-    return fotoCount > videoCount
-      ? PortfolioMediaType.foto
+    const counts = new Map<PortfolioMediaType, number>([
+      [PortfolioMediaType.video, 0],
+      [PortfolioMediaType.foto, 0],
+      [PortfolioMediaType.design, 0],
+    ]);
+    for (const item of items) {
+      counts.set(item.tipoMidia, (counts.get(item.tipoMidia) ?? 0) + 1);
+    }
+
+    const maxCount = Math.max(...counts.values());
+    const predominant = [...counts.entries()].filter(
+      ([, count]) => count === maxCount,
+    );
+    return predominant.length === 1
+      ? predominant[0][0]
       : PortfolioMediaType.video;
   }
 

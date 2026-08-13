@@ -6,7 +6,11 @@ import { createWithUniqueSlugField } from '../common/short-id.util';
 import { UpdatePortfolioProfileDto } from './dto/update-portfolio-profile.dto';
 import { PortfolioProfilePhotoUploadUrlDto } from './dto/photo-upload-url.dto';
 
-const PROFILE_SELECT = { fotoUrl: true, linkHub: true } as const;
+const PROFILE_SELECT = {
+  fotoUrl: true,
+  linkHub: true,
+  templateId: true,
+} as const;
 
 @Injectable()
 export class PortfolioProfileService {
