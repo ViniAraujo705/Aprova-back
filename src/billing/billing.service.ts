@@ -42,8 +42,27 @@ export class BillingService {
 
     const account = await this.prisma.account.findUniqueOrThrow({
       where: { id: accountId },
-      select: { asaasCustomerId: true },
+      select: { asaasCustomerId: true, asaasSubscriptionId: true, plan: true },
     });
+
+    // Um clique repetido (ou uma falha de rede depois de criar a assinatura)
+    // deve reabrir a mesma fatura pendente, nunca criar outra recorrência.
+    if (account.asaasSubscriptionId) {
+      if (account.plan !== Plan.free) {
+        throw new BadRequestException(
+          'Esta conta ja possui uma assinatura ativa. Cancele-a antes de trocar de plano.',
+        );
+      }
+      const invoiceUrl = await this.asaas.getFirstPaymentInvoiceUrl(
+        account.asaasSubscriptionId,
+      );
+      if (!invoiceUrl) {
+        throw new BadRequestException(
+          'Nao foi possivel recuperar a fatura pendente da Asaas',
+        );
+      }
+      return { url: invoiceUrl };
+    }
 
     let customerId = account.asaasCustomerId;
     if (!customerId) {
@@ -62,6 +81,19 @@ export class BillingService {
       nextDueDate: new Date().toISOString().slice(0, 10),
       description: def.description,
       externalReference: this.buildExternalReference(accountId, plan, cycle),
+      successUrl: this.buildCheckoutSuccessUrl(),
+    });
+
+    await this.prisma.account.update({
+      where: { id: accountId },
+      // Persiste a assinatura antes de devolver a URL. Isso evita criar uma
+      // assinatura recorrente sem que a conta consiga cancelá-la se a busca
+      // da fatura falhar numa tentativa posterior.
+      data: {
+        asaasCustomerId: customerId,
+        asaasSubscriptionId: subscription.id,
+        cpfCnpj,
+      },
     });
 
     const invoiceUrl = await this.asaas.getFirstPaymentInvoiceUrl(
@@ -70,11 +102,6 @@ export class BillingService {
     if (!invoiceUrl) {
       throw new BadRequestException('Asaas nao retornou uma URL de checkout');
     }
-
-    await this.prisma.account.update({
-      where: { id: accountId },
-      data: { asaasCustomerId: customerId, cpfCnpj },
-    });
 
     return { url: invoiceUrl };
   }
@@ -98,7 +125,7 @@ export class BillingService {
     await this.asaas.cancelSubscription(account.asaasSubscriptionId);
     await this.prisma.account.update({
       where: { id: accountId },
-      data: { plan: Plan.free },
+      data: { plan: Plan.free, asaasSubscriptionId: null },
     });
     return { plan: Plan.free };
   }
@@ -130,6 +157,26 @@ export class BillingService {
       return;
     }
 
+    const account = await this.prisma.account.findUnique({
+      where: { id: parsed.accountId },
+      select: { asaasSubscriptionId: true, plan: true },
+    });
+    if (!account) {
+      this.logger.warn(
+        `Webhook Asaas para conta inexistente: ${parsed.accountId}`,
+      );
+      return;
+    }
+    if (
+      account.asaasSubscriptionId &&
+      account.asaasSubscriptionId !== payment.subscription
+    ) {
+      this.logger.warn(
+        `Webhook Asaas de assinatura antiga ignorado: ${payment.subscription}`,
+      );
+      return;
+    }
+
     if (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED') {
       await this.prisma.account.update({
         where: { id: parsed.accountId },
@@ -142,14 +189,10 @@ export class BillingService {
       event === 'SUBSCRIPTION_DELETED' ||
       event === 'PAYMENT_DELETED'
     ) {
-      const account = await this.prisma.account.findUnique({
-        where: { id: parsed.accountId },
-        select: { plan: true },
-      });
-      if (account && account.plan !== Plan.free) {
+      if (account.plan !== Plan.free || account.asaasSubscriptionId) {
         await this.prisma.account.update({
           where: { id: parsed.accountId },
-          data: { plan: Plan.free },
+          data: { plan: Plan.free, asaasSubscriptionId: null },
         });
       }
     } else {
@@ -191,6 +234,21 @@ export class BillingService {
     cycle: BillableCycle,
   ): string {
     return `${accountId}:${plan}:${cycle}`;
+  }
+
+  private buildCheckoutSuccessUrl(): string {
+    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
+      .split(',')[0]
+      .trim()
+      .replace(/\/+$/, '');
+
+    if (!base || base === '*') {
+      throw new BadRequestException(
+        'CORS_ORIGIN deve apontar para o frontend para iniciar o checkout',
+      );
+    }
+
+    return `${base}/configuracoes/plano?status=sucesso`;
   }
 
   private parseExternalReference(

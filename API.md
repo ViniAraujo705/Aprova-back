@@ -1204,8 +1204,7 @@ de vídeo (thumbnail/otimização) sobre os demais planos.
 
 ## Pagamento (`/billing`)
 Gateway: **Asaas** (Customer + Subscription). Assinatura recorrente via
-fatura (cartão/PIX/boleto, escolhido pelo próprio pagador na tela da
-Asaas) pra os planos `pro`/`agencia`. `free` não é assinável (é o padrão
+fatura com cartão de crédito pra os planos `pro`/`agencia`. `free` não é assinável (é o padrão
 de toda conta nova).
 
 | Método | Rota | Auth | Body | Retorno |
@@ -1219,8 +1218,10 @@ de toda conta nova).
   obrigatório em toda chamada — a Asaas exige documento pra criar o
   Customer), cria a Subscription e devolve `url` (`invoiceUrl` da
   primeira fatura) — o frontend deve **redirecionar** o usuário pra essa
-  URL, a própria tela hospedada da Asaas onde ele escolhe a forma de
-  pagamento e autoriza a cobrança recorrente. `502` se a Asaas estiver
+  URL, a própria tela hospedada da Asaas onde informa o cartão e autoriza a
+  cobrança recorrente. Após a confirmação, a Asaas
+  retorna para `<CORS_ORIGIN>/configuracoes/plano?status=sucesso`; o webhook
+  continua sendo a fonte de verdade para ativar o plano. `502` se a Asaas estiver
   fora do ar ou a API key não estiver configurada.
 - `cancel`: cancela a assinatura ativa na Asaas e já rebaixa a conta pra
   `free` na mesma hora (sem período de graça). `400` se a conta não tem

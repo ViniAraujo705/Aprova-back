@@ -14,6 +14,7 @@ export interface CreateSubscriptionParams {
   nextDueDate: string;
   description: string;
   externalReference: string;
+  successUrl: string;
 }
 
 /**
@@ -52,12 +53,20 @@ export class AsaasService {
     return this.run('criar assinatura', () =>
       this.request<{ id: string }>('POST', '/subscriptions', {
         customer: params.customerId,
-        billingType: 'UNDEFINED',
+        // Assinaturas recorrentes precisam nascer vinculadas ao cartão para
+        // que a fatura hospedada exiba o formulário de cartão. `UNDEFINED`
+        // depende das formas habilitadas na conta Asaas e, no Sandbox, pode
+        // resultar em uma fatura apenas de boleto.
+        billingType: 'CREDIT_CARD',
         value: params.value,
         nextDueDate: params.nextDueDate,
         cycle: params.cycle,
         description: params.description,
         externalReference: params.externalReference,
+        callback: {
+          successUrl: params.successUrl,
+          autoRedirect: true,
+        },
       }),
     );
   }
