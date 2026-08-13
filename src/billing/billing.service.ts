@@ -30,7 +30,7 @@ export class BillingService {
     private readonly config: ConfigService,
   ) {}
 
-  /** Cria (ou reaproveita) o Customer, cria a assinatura e devolve a URL da fatura pra redirecionar o payer. */
+  /** Cria uma sessão de checkout hospedada que coleta o cartão e cria a assinatura recorrente. */
   async createCheckout(
     accountId: string,
     plan: BillablePlan,
@@ -42,68 +42,33 @@ export class BillingService {
 
     const account = await this.prisma.account.findUniqueOrThrow({
       where: { id: accountId },
-      select: { asaasCustomerId: true, asaasSubscriptionId: true, plan: true },
+      select: { asaasSubscriptionId: true, plan: true },
     });
 
-    // Um clique repetido (ou uma falha de rede depois de criar a assinatura)
-    // deve reabrir a mesma fatura pendente, nunca criar outra recorrência.
+    // Depois de um pagamento confirmado, uma nova contratação exige cancelar
+    // a assinatura vigente primeiro. Antes da confirmação não há assinatura:
+    // o Checkout expira em 60 minutos e não cria recorrência sozinho.
     if (account.asaasSubscriptionId) {
-      if (account.plan !== Plan.free) {
-        throw new BadRequestException(
-          'Esta conta ja possui uma assinatura ativa. Cancele-a antes de trocar de plano.',
-        );
-      }
-      const invoiceUrl = await this.asaas.getFirstPaymentInvoiceUrl(
-        account.asaasSubscriptionId,
+      throw new BadRequestException(
+        'Esta conta ja possui uma assinatura ativa. Cancele-a antes de trocar de plano.',
       );
-      if (!invoiceUrl) {
-        throw new BadRequestException(
-          'Nao foi possivel recuperar a fatura pendente da Asaas',
-        );
-      }
-      return { url: invoiceUrl };
     }
 
-    let customerId = account.asaasCustomerId;
-    if (!customerId) {
-      const customer = await this.asaas.createCustomer({
-        name: owner.nome,
-        email: owner.email,
-        cpfCnpj,
-      });
-      customerId = customer.id;
-    }
-
-    const subscription = await this.asaas.createSubscription({
-      customerId,
+    const checkout = await this.asaas.createCheckout({
+      name: owner.nome,
+      email: owner.email,
+      cpfCnpj,
       value: def.value,
       cycle: def.cycle,
       nextDueDate: new Date().toISOString().slice(0, 10),
       description: def.description,
       externalReference: this.buildExternalReference(accountId, plan, cycle),
       successUrl: this.buildCheckoutSuccessUrl(),
+      cancelUrl: this.buildCheckoutReturnUrl('cancelado'),
+      expiredUrl: this.buildCheckoutReturnUrl('expirado'),
     });
 
-    await this.prisma.account.update({
-      where: { id: accountId },
-      // Persiste a assinatura antes de devolver a URL. Isso evita criar uma
-      // assinatura recorrente sem que a conta consiga cancelá-la se a busca
-      // da fatura falhar numa tentativa posterior.
-      data: {
-        asaasCustomerId: customerId,
-        asaasSubscriptionId: subscription.id,
-        cpfCnpj,
-      },
-    });
-
-    const invoiceUrl = await this.asaas.getFirstPaymentInvoiceUrl(
-      subscription.id,
-    );
-    if (!invoiceUrl) {
-      throw new BadRequestException('Asaas nao retornou uma URL de checkout');
-    }
-
-    return { url: invoiceUrl };
+    return checkout;
   }
 
   /**
@@ -237,6 +202,10 @@ export class BillingService {
   }
 
   private buildCheckoutSuccessUrl(): string {
+    return this.buildCheckoutReturnUrl('sucesso');
+  }
+
+  private buildCheckoutReturnUrl(status: 'sucesso' | 'cancelado' | 'expirado'): string {
     const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
       .split(',')[0]
       .trim()
@@ -248,7 +217,7 @@ export class BillingService {
       );
     }
 
-    return `${base}/configuracoes/plano?status=sucesso`;
+    return `${base}/configuracoes/plano?status=${status}`;
   }
 
   private parseExternalReference(

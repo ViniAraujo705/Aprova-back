@@ -1203,8 +1203,8 @@ de vídeo (thumbnail/otimização) sobre os demais planos.
 ---
 
 ## Pagamento (`/billing`)
-Gateway: **Asaas** (Customer + Subscription). Assinatura recorrente via
-fatura com cartão de crédito pra os planos `pro`/`agencia`. `free` não é assinável (é o padrão
+Gateway: **Asaas Checkout** (página hospedada + Subscription). Assinatura
+recorrente via cartão de crédito pra os planos `pro`/`agencia`. `free` não é assinável (é o padrão
 de toda conta nova).
 
 | Método | Rota | Auth | Body | Retorno |
@@ -1213,13 +1213,11 @@ de toda conta nova).
 | `POST` | `/billing/cancel` | `owner` | — | `{ plan: "free" }` |
 | `POST` | `/billing/webhooks/asaas` | **sem autenticação** (verificado por token) | payload da Asaas | `{ received: true }` |
 
-- `checkout`: cria (ou reaproveita) o Customer na Asaas com o email do
-  owner da conta + `cpfCnpj` (só dígitos, 11 = CPF ou 14 = CNPJ,
-  obrigatório em toda chamada — a Asaas exige documento pra criar o
-  Customer), cria a Subscription e devolve `url` (`invoiceUrl` da
-  primeira fatura) — o frontend deve **redirecionar** o usuário pra essa
-  URL, a própria tela hospedada da Asaas onde informa o cartão e autoriza a
-  cobrança recorrente. Após a confirmação, a Asaas
+- `checkout`: cria uma sessão do **Asaas Checkout** com os dados do owner e
+  `cpfCnpj` (só dígitos, 11 = CPF ou 14 = CNPJ) e devolve a URL hospedada.
+  O frontend deve **redirecionar** o usuário pra ela; a Asaas coleta o cartão
+  de forma compatível com PCI e cria a assinatura recorrente apenas após a
+  confirmação. Após a confirmação, a Asaas
   retorna para `<CORS_ORIGIN>/configuracoes/plano?status=sucesso`; o webhook
   continua sendo a fonte de verdade para ativar o plano. `502` se a Asaas estiver
   fora do ar ou a API key não estiver configurada.

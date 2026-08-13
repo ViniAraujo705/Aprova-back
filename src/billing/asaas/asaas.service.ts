@@ -1,20 +1,18 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-export interface CreateCustomerParams {
+export interface CreateCheckoutParams {
   name: string;
   email: string;
   cpfCnpj: string;
-}
-
-export interface CreateSubscriptionParams {
-  customerId: string;
   value: number;
   cycle: 'MONTHLY' | 'YEARLY';
   nextDueDate: string;
   description: string;
   externalReference: string;
   successUrl: string;
+  cancelUrl: string;
+  expiredUrl: string;
 }
 
 /**
@@ -37,49 +35,42 @@ export class AsaasService {
     this.apiKey = config.get<string>('ASAAS_API_KEY') ?? '';
   }
 
-  async createCustomer(params: CreateCustomerParams): Promise<{ id: string }> {
-    return this.run('criar cliente', () =>
-      this.request<{ id: string }>('POST', '/customers', {
-        name: params.name,
-        email: params.email,
-        cpfCnpj: params.cpfCnpj,
-      }),
-    );
-  }
-
-  async createSubscription(
-    params: CreateSubscriptionParams,
-  ): Promise<{ id: string }> {
-    return this.run('criar assinatura', () =>
-      this.request<{ id: string }>('POST', '/subscriptions', {
-        customer: params.customerId,
-        // Assinaturas recorrentes precisam nascer vinculadas ao cartão para
-        // que a fatura hospedada exiba o formulário de cartão. `UNDEFINED`
-        // depende das formas habilitadas na conta Asaas e, no Sandbox, pode
-        // resultar em uma fatura apenas de boleto.
-        billingType: 'CREDIT_CARD',
-        value: params.value,
-        nextDueDate: params.nextDueDate,
-        cycle: params.cycle,
-        description: params.description,
-        externalReference: params.externalReference,
+  /**
+   * Checkout hospedado: a Asaas coleta e armazena o cartão com PCI, cria a
+   * assinatura recorrente e devolve somente o identificador da sessão.
+   */
+  async createCheckout(params: CreateCheckoutParams): Promise<{ url: string }> {
+    return this.run('criar checkout', async () => {
+      const checkout = await this.request<{ id: string }>('POST', '/checkouts', {
+        billingTypes: ['CREDIT_CARD'],
+        chargeTypes: ['RECURRENT'],
+        minutesToExpire: 60,
         callback: {
           successUrl: params.successUrl,
+          cancelUrl: params.cancelUrl,
+          expiredUrl: params.expiredUrl,
           autoRedirect: true,
         },
-      }),
-    );
-  }
-
-  /** Busca a fatura gerada pela assinatura pra pegar a URL de checkout. */
-  async getFirstPaymentInvoiceUrl(
-    subscriptionId: string,
-  ): Promise<string | undefined> {
-    return this.run('buscar fatura da assinatura', async () => {
-      const result = await this.request<{
-        data: Array<{ invoiceUrl?: string }>;
-      }>('GET', `/payments?subscription=${subscriptionId}`);
-      return result.data?.[0]?.invoiceUrl;
+        items: [
+          {
+            name: params.description,
+            description: params.description,
+            quantity: 1,
+            value: params.value,
+          },
+        ],
+        customerData: {
+          name: params.name,
+          email: params.email,
+          cpfCnpj: params.cpfCnpj,
+        },
+        externalReference: params.externalReference,
+        subscription: {
+          cycle: params.cycle,
+          nextDueDate: params.nextDueDate,
+        },
+      });
+      return { url: `${this.checkoutBaseUrl}/checkoutSession/show?id=${checkout.id}` };
     });
   }
 
@@ -108,6 +99,12 @@ export class AsaasService {
       throw new Error(message);
     }
     return json as T;
+  }
+
+  private get checkoutBaseUrl(): string {
+    return this.baseUrl.includes('sandbox')
+      ? 'https://sandbox.asaas.com'
+      : 'https://www.asaas.com';
   }
 
   private async run<T>(action: string, fn: () => Promise<T>): Promise<T> {
