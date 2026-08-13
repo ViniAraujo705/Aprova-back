@@ -1,4 +1,10 @@
-import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 export interface CreateCheckoutParams {
@@ -13,6 +19,15 @@ export interface CreateCheckoutParams {
   successUrl: string;
   cancelUrl: string;
   expiredUrl: string;
+}
+
+class AsaasRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
 }
 
 /**
@@ -41,7 +56,7 @@ export class AsaasService {
    */
   async createCheckout(params: CreateCheckoutParams): Promise<{ url: string }> {
     return this.run('criar checkout', async () => {
-      const checkout = await this.request<{ id: string }>('POST', '/checkouts', {
+      const checkout = await this.request<{ id: string; link?: string }>('POST', '/checkouts', {
         billingTypes: ['CREDIT_CARD'],
         chargeTypes: ['RECURRENT'],
         minutesToExpire: 60,
@@ -49,7 +64,6 @@ export class AsaasService {
           successUrl: params.successUrl,
           cancelUrl: params.cancelUrl,
           expiredUrl: params.expiredUrl,
-          autoRedirect: true,
         },
         items: [
           {
@@ -70,7 +84,11 @@ export class AsaasService {
           nextDueDate: params.nextDueDate,
         },
       });
-      return { url: `${this.checkoutBaseUrl}/checkoutSession/show?id=${checkout.id}` };
+      return {
+        // A API atual já devolve o link pronto. Mantém fallback para versões
+        // antigas da API que retornavam somente o identificador da sessão.
+        url: checkout.link ?? `${this.checkoutBaseUrl}/checkoutSession/show?id=${checkout.id}`,
+      };
     });
   }
 
@@ -96,7 +114,7 @@ export class AsaasService {
     const json = await res.json().catch(() => undefined);
     if (!res.ok) {
       const message = json?.errors?.[0]?.description ?? `HTTP ${res.status}`;
-      throw new Error(message);
+      throw new AsaasRequestError(message, res.status);
     }
     return json as T;
   }
@@ -113,6 +131,14 @@ export class AsaasService {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'erro desconhecido';
       this.logger.error(`Asaas falhou ao ${action}: ${message}`);
+      if (err instanceof AsaasRequestError) {
+        if (err.status === 400) {
+          throw new BadRequestException(`Asaas recusou o checkout: ${message}`);
+        }
+        if (err.status === 401) {
+          throw new UnauthorizedException('Chave de API da Asaas invalida');
+        }
+      }
       throw new BadGatewayException(`Falha ao ${action} na Asaas: ${message}`);
     }
   }
