@@ -71,4 +71,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=10s \
   CMD node -e "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
-CMD ["sh", "-c", "node node_modules/.bin/prisma migrate deploy && node dist/main"]
+# Migrations rodam no pre-deploy do Railway (railway.json). Assim, se uma
+# migration falhar, a versao atual continua atendendo e este processo inicia
+# apenas a API HTTP.
+CMD ["node", "dist/main"]
