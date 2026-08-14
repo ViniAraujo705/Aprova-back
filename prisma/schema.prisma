@@ -178,6 +178,7 @@ model Account {
   clientFiles         ClientFile[]
   labels              Label[]
 
+  clientFields        ClientField[]
   @@map("accounts")
 }
 
@@ -433,6 +434,9 @@ model Client {
   logoUrl     String? @map("logo_url")
   corDestaque String? @map("cor_destaque")
 
+  // Valores dos campos customizados definidos pela agencia. As chaves sao os
+  // IDs de ClientField para que renomear um campo nao altere valores ja salvos.
+  camposPersonalizados Json? @map("campos_personalizados")
   account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
   responsavel     User?            @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
   projects        Project[]
@@ -448,6 +452,21 @@ model Client {
   @@index([responsavelId])
   @@map("clients")
 }
+// Definicao de um campo extra no cadastro de clientes, compartilhada por
+// todos os membros da mesma agencia.
+model ClientField {
+  id        String   @id @default(uuid())
+  accountId String   @map("account_id")
+  rotulo    String
+  ordem     Int      @default(0)
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, ordem])
+  @@map("client_fields")
+}
+
 
 // Trilha de auditoria append-only do cliente (central do cliente no
 // frontend, GET /clients/:id/activity). Gravada automaticamente pelo

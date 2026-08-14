@@ -1,4 +1,11 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+import { Prisma } from '@prisma/client';
 
 export class CreateClientDto {
   @IsString()
@@ -16,4 +23,8 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   fotoUrl?: string;
+
+  @IsOptional()
+  @IsObject()
+  camposPersonalizados?: Prisma.InputJsonObject;
 }

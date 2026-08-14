@@ -53,7 +53,7 @@ export class ClientsService {
   async update(accountId: string, id: string, dto: UpdateClientDto) {
     // Garante que o cliente pertence a conta antes de atualizar
     await this.findOwnedClient(accountId, id);
-    const { responsibleId, ...clientData } = dto;
+    const { responsibleId, responsavelId: _responsavelId, ...clientData } = dto;
     const responsavelId = dto.responsavelId ?? responsibleId;
     await this.assertResponsavelBelongsToAccount(accountId, responsavelId);
     const client = await this.prisma.client.update({
