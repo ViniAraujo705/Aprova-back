@@ -1,30 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import ffmpeg from 'fluent-ffmpeg';
-import ffmpegStatic from 'ffmpeg-static';
-// ffprobe-static expõe { path } com o binário do ffprobe embutido
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import * as ffprobeStatic from 'ffprobe-static';
 
 /**
  * Encapsula as operações de ffmpeg usadas no pipeline de processamento
- * de vídeo (thumbnail + versão otimizada). Usa os binários embutidos
- * via ffmpeg-static / ffprobe-static, então não depende de um ffmpeg
- * instalado no sistema.
+ * de vídeo (thumbnail + versão otimizada). Usa binários embutidos com licença
+ * LGPL/MIT; FFMPEG_PATH e FFPROBE_PATH permitem sobrescrever os caminhos.
  */
 @Injectable()
 export class MediaService {
-  private readonly logger = new Logger(MediaService.name);
-
   constructor() {
-    if (ffmpegStatic) {
-      ffmpeg.setFfmpegPath(ffmpegStatic);
-    } else {
-      this.logger.warn(
-        'ffmpeg-static não resolveu um binário nesta plataforma; o processamento de vídeo pode falhar.',
-      );
-    }
-    if (ffprobeStatic?.path) {
-      ffmpeg.setFfprobePath(ffprobeStatic.path);
-    }
+    ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH ?? ffmpegInstaller.path);
+    ffmpeg.setFfprobePath(process.env.FFPROBE_PATH ?? ffprobeStatic.path);
   }
 
   /**

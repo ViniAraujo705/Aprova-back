@@ -24,7 +24,19 @@ async function bootstrap() {
   // receber SIGTERM/SIGINT - necessario pra encerrar limpo em redeploys.
   app.enableShutdownHooks();
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      hsts: { maxAge: 31_536_000, includeSubDomains: true, preload: true },
+      noSniff: true,
+      referrerPolicy: { policy: 'no-referrer' },
+      xDnsPrefetchControl: { allow: false },
+      xPoweredBy: false,
+      // Navegadores modernos ignoram o filtro; "0" e a configuracao segura.
+      xXssProtection: true,
+    }),
+  );
 
   // Validacao global de todos os DTOs
   app.useGlobalPipes(

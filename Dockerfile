@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# Base debian (nao alpine): ffmpeg-static/ffprobe-static e o engine do Prisma
-# tem suporte mais confiavel a glibc do que a musl.
+# Base Debian (nao Alpine): os binários de mídia e o engine do Prisma têm
+# suporte mais confiável a glibc do que a musl.
 ARG NODE_VERSION=20-slim
 
 # ---- deps: instala TODAS as deps (dev incluidas), usadas so no build ----
@@ -31,6 +31,7 @@ RUN npm run build
 # ---- migrate: roda `prisma migrate deploy` (reusa o stage de build, que
 # tem o Prisma CLI completo); usado como job/one-off, nao como servidor ----
 FROM build AS migrate
+USER node
 CMD ["npx", "prisma", "migrate", "deploy"]
 
 # ---- prod-deps: instala so as deps de producao (mesmo base da imagem final) ----

@@ -8,6 +8,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { OnboardingService } from './onboarding.service';
 import { SessionsModule } from '../sessions/sessions.module';
 import { SelectAccountGuard } from './guards/select-account.guard';
+import type { StringValue } from 'ms';
 
 @Module({
   imports: [
@@ -17,9 +18,10 @@ import { SelectAccountGuard } from './guards/select-account.guard';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET'),
+        secret: config.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '7d',
+          expiresIn: (config.get<string>('JWT_EXPIRES_IN') ??
+            '7d') as StringValue,
         },
       }),
     }),

@@ -2,6 +2,7 @@ import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import { Injectable, Logger } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import {
   DeleteObjectCommand,
@@ -203,7 +204,7 @@ export class StorageService {
 
   private buildKey(fileName: string, folder = 'videos'): string {
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const unique = `${Date.now()}-${randomBytes(8).toString('hex')}`;
     return `${folder}/${unique}-${safeName}`;
   }
 }

@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Session } from '@prisma/client';
-import { UAParser } from 'ua-parser-js';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type TipoDispositivo = 'desktop' | 'mobile' | 'tablet';
@@ -104,13 +103,13 @@ export class SessionsService {
     session: Session,
     currentSessionId: string | null,
   ): SessionResponseDto {
-    const { browser, os, device } = UAParser(session.userAgent ?? '');
-    const dispositivo = `${browser.name ?? 'Navegador'} · ${os.name ?? 'Desconhecido'}`;
+    const device = this.parseUserAgent(session.userAgent ?? '');
+    const dispositivo = `${device.browser} · ${device.os}`;
 
     return {
       id: session.id,
       dispositivo,
-      tipoDispositivo: this.tipoDispositivoFor(device.type),
+      tipoDispositivo: device.type,
       localizacao: null,
       ip: session.ip,
       criadoEm: session.criadoEm,
@@ -119,9 +118,45 @@ export class SessionsService {
     };
   }
 
-  private tipoDispositivoFor(deviceType?: string): TipoDispositivo {
-    if (deviceType === 'mobile') return 'mobile';
-    if (deviceType === 'tablet') return 'tablet';
-    return 'desktop';
+  /**
+   * Metadados de sessao sao apenas informativos na UI. Um parser pequeno evita
+   * depender de ua-parser-js (AGPL) e nunca influencia autenticacao ou acesso.
+   */
+  private parseUserAgent(userAgent: string): {
+    browser: string;
+    os: string;
+    type: TipoDispositivo;
+  } {
+    const browser = /Edg\//.test(userAgent)
+      ? 'Edge'
+      : /OPR\//.test(userAgent)
+        ? 'Opera'
+        : /Firefox\//.test(userAgent)
+          ? 'Firefox'
+          : /CriOS\//.test(userAgent)
+            ? 'Chrome'
+            : /Chrome\//.test(userAgent)
+              ? 'Chrome'
+              : /Safari\//.test(userAgent)
+                ? 'Safari'
+                : 'Navegador';
+    const os = /iPhone|iPad|iPod/.test(userAgent)
+      ? 'iOS'
+      : /Android/.test(userAgent)
+        ? 'Android'
+        : /Windows NT/.test(userAgent)
+          ? 'Windows'
+          : /Mac OS X/.test(userAgent)
+            ? 'macOS'
+            : /Linux/.test(userAgent)
+              ? 'Linux'
+              : 'Desconhecido';
+    const type: TipoDispositivo = /iPad|Tablet/.test(userAgent)
+      ? 'tablet'
+      : /Mobi|iPhone|iPod|Android/.test(userAgent)
+        ? 'mobile'
+        : 'desktop';
+
+    return { browser, os, type };
   }
 }

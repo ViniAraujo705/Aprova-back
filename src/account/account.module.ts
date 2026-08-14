@@ -5,6 +5,7 @@ import { AccountController } from './account.controller';
 import { AccountService } from './account.service';
 import { SessionsModule } from '../sessions/sessions.module';
 import { PlansModule } from '../plans/plans.module';
+import type { StringValue } from 'ms';
 
 @Module({
   imports: [
@@ -16,9 +17,10 @@ import { PlansModule } from '../plans/plans.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET'),
+        secret: config.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '7d',
+          expiresIn: (config.get<string>('JWT_EXPIRES_IN') ??
+            '7d') as StringValue,
         },
       }),
     }),
