@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Client, UserRole } from '@prisma/client';
+import { Client, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { PlansService } from '../plans/plans.service';
@@ -31,6 +31,13 @@ export class ClientsService {
         email: dto.email,
         descricao: dto.descricao,
         fotoUrl: dto.fotoUrl,
+        ...(dto.camposPersonalizados !== undefined
+          ? {
+              camposPersonalizados: this.normalizeCustomFields(
+                dto.camposPersonalizados,
+              ),
+            }
+          : {}),
         accountId,
       },
     });
@@ -53,7 +60,12 @@ export class ClientsService {
   async update(accountId: string, id: string, dto: UpdateClientDto) {
     // Garante que o cliente pertence a conta antes de atualizar
     await this.findOwnedClient(accountId, id);
-    const { responsibleId, responsavelId: _responsavelId, ...clientData } = dto;
+    const {
+      responsibleId,
+      responsavelId: _responsavelId,
+      camposPersonalizados,
+      ...clientData
+    } = dto;
     const responsavelId = dto.responsavelId ?? responsibleId;
     await this.assertResponsavelBelongsToAccount(accountId, responsavelId);
     const client = await this.prisma.client.update({
@@ -61,6 +73,16 @@ export class ClientsService {
       data: {
         ...clientData,
         ...(responsavelId !== undefined ? { responsavelId } : {}),
+        // O payload e um snapshot dos valores deste cliente. Assim, uma
+        // chave ausente ou com valor vazio e removida apenas deste registro;
+        // nunca ha upsert compartilhado por ID de ClientField.
+        ...(camposPersonalizados !== undefined
+          ? {
+              camposPersonalizados: this.normalizeCustomFields(
+                camposPersonalizados,
+              ),
+            }
+          : {}),
       },
     });
     return this.toResponse(client);
@@ -192,6 +214,30 @@ export class ClientsService {
       throw new NotFoundException('Cliente nao encontrado');
     }
     return client;
+  }
+
+  /**
+   * Normaliza o mapa JSONB de valores do cliente. Campos vazios (inclusive
+   * `null` e strings em branco) nao sao persistidos: enviar um novo snapshot
+   * sem a chave efetivamente apaga aquele valor para este cliente.
+   */
+  private normalizeCustomFields(
+    fields: Prisma.InputJsonObject,
+  ): Prisma.InputJsonObject {
+    const normalized: Record<string, Prisma.InputJsonValue> = {};
+
+    for (const [fieldId, value] of Object.entries(fields)) {
+      if (value === null || value === undefined) continue;
+      if (typeof value === 'string') {
+        const trimmedValue = value.trim();
+        if (!trimmedValue) continue;
+        normalized[fieldId] = trimmedValue;
+        continue;
+      }
+      normalized[fieldId] = value;
+    }
+
+    return normalized;
   }
 
   /** Valida o isolamento multi-tenant antes de atribuir o responsavel. */
