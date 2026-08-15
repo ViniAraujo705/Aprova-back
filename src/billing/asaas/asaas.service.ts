@@ -33,6 +33,10 @@ interface AsaasPayment {
   status?: string;
 }
 
+interface AsaasSubscription {
+  id: string;
+}
+
 class AsaasRequestError extends Error {
   constructor(
     message: string,
@@ -138,7 +142,25 @@ export class AsaasService {
           Boolean(payment.subscription) &&
           (payment.status === 'CONFIRMED' || payment.status === 'RECEIVED'),
       );
-      return paid?.subscription ?? null;
+      if (paid?.subscription) return paid.subscription;
+
+      // O Checkout pode vincular a referência diretamente à assinatura em
+      // vez da primeira cobrança. Nesse caso, confirma a cobrança daquela
+      // assinatura antes de liberar qualquer recurso.
+      const subscriptions = await this.request<{ data: AsaasSubscription[] }>(
+        'GET',
+        `/subscriptions?${query.toString()}&status=ACTIVE`,
+      );
+      const subscription = subscriptions.data[0];
+      if (!subscription) return null;
+
+      const payments = await this.request<{ data: AsaasPayment[] }>(
+        'GET',
+        `/subscriptions/${subscription.id}/payments?status=CONFIRMED`,
+      );
+      return payments.data.some((payment) => payment.status === 'CONFIRMED')
+        ? subscription.id
+        : null;
     });
   }
 
