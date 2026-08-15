@@ -1209,12 +1209,13 @@ de toda conta nova).
 
 | Método | Rota | Auth | Body | Retorno |
 |---|---|---|---|---|
-| `POST` | `/billing/checkout` | `owner` | `{ plan: "pro"\|"agencia", cycle: "MONTHLY"\|"YEARLY", cpfCnpj: string }` | `{ url }` |
+| `POST` | `/billing/checkout` | `owner` | `{ plan: "pro"\|"agencia", cycle: "MONTHLY"\|"YEARLY", cpfCnpj: string, phoneNumber: string }` | `{ url }` |
 | `POST` | `/billing/cancel` | `owner` | — | `{ plan: "free" }` |
 | `POST` | `/billing/webhooks/asaas` | **sem autenticação** (verificado por token) | payload da Asaas | `{ received: true }` |
 
-- `checkout`: cria uma sessão do **Asaas Checkout** com os dados do owner e
-  `cpfCnpj` (só dígitos, 11 = CPF ou 14 = CNPJ) e devolve a URL hospedada.
+- `checkout`: cria uma sessão do **Asaas Checkout** com os dados do owner,
+  `cpfCnpj` (só dígitos, 11 = CPF ou 14 = CNPJ) e `phoneNumber` (DDD + 10 ou
+  11 dígitos, sem pontuação) e devolve a URL hospedada.
   O frontend deve **redirecionar** o usuário pra ela; a Asaas coleta o cartão
   de forma compatível com PCI e cria a assinatura recorrente apenas após a
   confirmação. Após a confirmação, a Asaas

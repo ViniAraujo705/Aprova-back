@@ -36,6 +36,7 @@ export class BillingService {
     plan: BillablePlan,
     cycle: BillableCycle,
     cpfCnpj: string,
+    phoneNumber: string,
   ): Promise<{ url: string }> {
     const owner = await this.getOwner(accountId);
     const def = PLAN_BILLING[plan][cycle];
@@ -58,6 +59,7 @@ export class BillingService {
       name: owner.nome,
       email: owner.email,
       cpfCnpj,
+      phoneNumber,
       value: def.value,
       cycle: def.cycle,
       nextDueDate: new Date().toISOString().slice(0, 10),
