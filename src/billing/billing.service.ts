@@ -250,18 +250,50 @@ export class BillingService {
    * CEP informado pelo pagador.
    */
   private async findCityIbge(postalCode: string): Promise<number> {
+    const viaCepCity = await this.fetchViaCepCityIbge(postalCode);
+    if (viaCepCity) return viaCepCity;
+
+    const brasilApiCity = await this.fetchBrasilApiCityIbge(postalCode);
+    if (brasilApiCity) return brasilApiCity;
+
+    throw new BadGatewayException(
+      'Nao foi possivel identificar a cidade pelo CEP agora',
+    );
+  }
+
+  private async fetchViaCepCityIbge(
+    postalCode: string,
+  ): Promise<number | null> {
     try {
       const res = await fetch(`https://viacep.com.br/ws/${postalCode}/json/`);
       const data = (await res.json()) as { erro?: boolean; ibge?: string };
       const city = Number(data.ibge);
       if (!res.ok || data.erro || !Number.isInteger(city) || city <= 0) {
-        throw new BadRequestException('CEP invalido ou sem cidade identificada');
+        return null;
       }
       return city;
-    } catch (err) {
-      if (err instanceof BadRequestException) throw err;
-      this.logger.error(`Falha ao consultar CEP ${postalCode}`);
-      throw new BadGatewayException('Nao foi possivel consultar o CEP agora');
+    } catch {
+      this.logger.warn(`ViaCEP indisponivel para o CEP ${postalCode}`);
+      return null;
+    }
+  }
+
+  private async fetchBrasilApiCityIbge(
+    postalCode: string,
+  ): Promise<number | null> {
+    try {
+      const res = await fetch(
+        `https://brasilapi.com.br/api/cep/v2/${postalCode}`,
+      );
+      const data = (await res.json()) as { codigo_municipio_ibge?: number };
+      const city = Number(data.codigo_municipio_ibge);
+      if (!res.ok || !Number.isInteger(city) || city <= 0) {
+        return null;
+      }
+      return city;
+    } catch {
+      this.logger.warn(`BrasilAPI indisponivel para o CEP ${postalCode}`);
+      return null;
     }
   }
 }
