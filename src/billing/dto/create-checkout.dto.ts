@@ -1,4 +1,4 @@
-import { IsIn, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { BillableCycle, BillablePlan } from '../plan-billing.config';
 
 export class CreateCheckoutDto {
@@ -24,4 +24,27 @@ export class CreateCheckoutDto {
     message: 'phoneNumber deve conter DDD e 10 ou 11 digitos, sem pontuacao',
   })
   phoneNumber: string;
+
+  @Matches(/^\d{8}$/, {
+    message: 'postalCode deve conter 8 digitos, sem pontuacao',
+  })
+  postalCode: string;
+
+  @IsString()
+  @MaxLength(120)
+  address: string;
+
+  @IsString()
+  @MaxLength(20)
+  addressNumber: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  complement?: string;
+
+  // Bairro. A Asaas o chama de province no customerData.
+  @IsString()
+  @MaxLength(100)
+  province: string;
 }

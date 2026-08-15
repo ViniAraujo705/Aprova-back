@@ -38,6 +38,11 @@ export class BillingController {
       dto.cycle,
       dto.cpfCnpj,
       dto.phoneNumber,
+      dto.postalCode,
+      dto.address,
+      dto.addressNumber,
+      dto.complement,
+      dto.province,
     );
   }
 

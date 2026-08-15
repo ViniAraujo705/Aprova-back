@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  BadGatewayException,
   Injectable,
   Logger,
   NotFoundException,
@@ -37,6 +38,11 @@ export class BillingService {
     cycle: BillableCycle,
     cpfCnpj: string,
     phoneNumber: string,
+    postalCode: string,
+    address: string,
+    addressNumber: string,
+    complement: string | undefined,
+    province: string,
   ): Promise<{ url: string }> {
     const owner = await this.getOwner(accountId);
     const def = PLAN_BILLING[plan][cycle];
@@ -60,6 +66,12 @@ export class BillingService {
       email: owner.email,
       cpfCnpj,
       phoneNumber,
+      postalCode,
+      address,
+      addressNumber,
+      complement,
+      province,
+      city: await this.findCityIbge(postalCode),
       value: def.value,
       cycle: def.cycle,
       nextDueDate: new Date().toISOString().slice(0, 10),
@@ -230,5 +242,26 @@ export class BillingService {
     if (!accountId || (plan !== 'pro' && plan !== 'agencia')) return null;
     if (cycle !== 'MONTHLY' && cycle !== 'YEARLY') return null;
     return { accountId, plan, cycle };
+  }
+
+  /**
+   * A Asaas recebe a cidade como código IBGE. Para não exigir esse código
+   * técnico no checkout, o backend o resolve de forma confiável a partir do
+   * CEP informado pelo pagador.
+   */
+  private async findCityIbge(postalCode: string): Promise<number> {
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${postalCode}/json/`);
+      const data = (await res.json()) as { erro?: boolean; ibge?: string };
+      const city = Number(data.ibge);
+      if (!res.ok || data.erro || !Number.isInteger(city) || city <= 0) {
+        throw new BadRequestException('CEP invalido ou sem cidade identificada');
+      }
+      return city;
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`Falha ao consultar CEP ${postalCode}`);
+      throw new BadGatewayException('Nao foi possivel consultar o CEP agora');
+    }
   }
 }
