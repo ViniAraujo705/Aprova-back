@@ -11,6 +11,7 @@ export interface CreateCheckoutParams {
   name: string;
   email: string;
   cpfCnpj: string;
+  phoneNumber: string;
   value: number;
   cycle: 'MONTHLY' | 'YEARLY';
   nextDueDate: string;
@@ -77,6 +78,7 @@ export class AsaasService {
           name: params.name,
           email: params.email,
           cpfCnpj: params.cpfCnpj,
+          phoneNumber: params.phoneNumber,
         },
         externalReference: params.externalReference,
         subscription: {

@@ -37,6 +37,7 @@ export class BillingController {
       dto.plan,
       dto.cycle,
       dto.cpfCnpj,
+      dto.phoneNumber,
     );
   }
 
