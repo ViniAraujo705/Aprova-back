@@ -19,9 +19,7 @@ export const PLAN_BILLING: Record<
   pro: {
     MONTHLY: {
       description: 'Vistoow Pro (mensal)',
-      // Valor mínimo aceito pelo Asaas para teste de checkout em produção.
-      // Restaurar para R$59 após validar o fluxo completo.
-      value: 5,
+      value: 59,
       cycle: 'MONTHLY',
     },
     YEARLY: {
