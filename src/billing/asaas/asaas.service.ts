@@ -12,6 +12,12 @@ export interface CreateCheckoutParams {
   email: string;
   cpfCnpj: string;
   phoneNumber: string;
+  postalCode: string;
+  address: string;
+  addressNumber: string;
+  complement?: string;
+  province: string;
+  city: number;
   value: number;
   cycle: 'MONTHLY' | 'YEARLY';
   nextDueDate: string;
@@ -79,6 +85,12 @@ export class AsaasService {
           email: params.email,
           cpfCnpj: params.cpfCnpj,
           phone: params.phoneNumber,
+          postalCode: params.postalCode,
+          address: params.address,
+          addressNumber: params.addressNumber,
+          ...(params.complement ? { complement: params.complement } : {}),
+          province: params.province,
+          city: params.city,
         },
         externalReference: params.externalReference,
         subscription: {

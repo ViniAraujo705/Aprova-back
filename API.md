@@ -1209,13 +1209,15 @@ de toda conta nova).
 
 | Método | Rota | Auth | Body | Retorno |
 |---|---|---|---|---|
-| `POST` | `/billing/checkout` | `owner` | `{ plan: "pro"\|"agencia", cycle: "MONTHLY"\|"YEARLY", cpfCnpj: string, phoneNumber: string }` | `{ url }` |
+| `POST` | `/billing/checkout` | `owner` | `{ plan: "pro"\|"agencia", cycle: "MONTHLY"\|"YEARLY", cpfCnpj, phoneNumber, postalCode, address, addressNumber, complement?, province }` | `{ url }` |
 | `POST` | `/billing/cancel` | `owner` | — | `{ plan: "free" }` |
 | `POST` | `/billing/webhooks/asaas` | **sem autenticação** (verificado por token) | payload da Asaas | `{ received: true }` |
 
 - `checkout`: cria uma sessão do **Asaas Checkout** com os dados do owner,
-  `cpfCnpj` (só dígitos, 11 = CPF ou 14 = CNPJ) e `phoneNumber` (DDD + 10 ou
-  11 dígitos, sem pontuação) e devolve a URL hospedada.
+  `cpfCnpj` (só dígitos, 11 = CPF ou 14 = CNPJ), `phoneNumber` (DDD + 10 ou
+  11 dígitos), `postalCode` (CEP), endereço, número, complemento opcional e
+  bairro (`province`) e devolve a URL hospedada. O código IBGE da cidade é
+  resolvido pelo backend a partir do CEP.
   O frontend deve **redirecionar** o usuário pra ela; a Asaas coleta o cartão
   de forma compatível com PCI e cria a assinatura recorrente apenas após a
   confirmação. Após a confirmação, a Asaas
