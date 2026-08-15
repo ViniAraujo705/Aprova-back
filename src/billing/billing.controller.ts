@@ -54,6 +54,14 @@ export class BillingController {
     return this.billingService.cancel(user.accountId);
   }
 
+  @Post('sync')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner)
+  syncCheckout(@CurrentUser() user: AuthUser) {
+    return this.billingService.syncCheckout(user.accountId);
+  }
+
   /**
    * Chamado pela Asaas (sem autenticacao JWT — autenticidade vem do token
    * configurado ao registrar o webhook no painel Asaas, ecoado de volta no

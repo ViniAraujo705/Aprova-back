@@ -110,6 +110,53 @@ export class BillingService {
   }
 
   /**
+   * Reconciliação pontual ao retornar da página hospedada. Ela cobre uma
+   * entrega atrasada do webhook, mas a confirmação sempre vem da API Asaas.
+   */
+  async syncCheckout(accountId: string): Promise<{ plan: Plan }> {
+    const account = await this.prisma.account.findUniqueOrThrow({
+      where: { id: accountId },
+      select: { plan: true, asaasSubscriptionId: true },
+    });
+
+    if (account.asaasSubscriptionId) return { plan: account.plan };
+
+    const candidates: Array<{ plan: BillablePlan; cycle: BillableCycle }> = [
+      { plan: 'pro', cycle: 'MONTHLY' },
+      { plan: 'pro', cycle: 'YEARLY' },
+      { plan: 'agencia', cycle: 'MONTHLY' },
+      { plan: 'agencia', cycle: 'YEARLY' },
+    ];
+
+    for (const candidate of candidates) {
+      const externalReference = this.buildExternalReference(
+        accountId,
+        candidate.plan,
+        candidate.cycle,
+      );
+      const subscription = await this.asaas.findConfirmedSubscription(
+        externalReference,
+      );
+      if (!subscription) continue;
+
+      const updated = await this.prisma.account.update({
+        where: { id: accountId },
+        data: {
+          plan: candidate.plan,
+          asaasSubscriptionId: subscription,
+        },
+        select: { plan: true },
+      });
+      this.logger.log(
+        `Plano reconciliado após retorno do checkout para conta ${accountId}`,
+      );
+      return { plan: updated.plan };
+    }
+
+    return { plan: account.plan };
+  }
+
+  /**
    * Valida o token do webhook e processa a notificacao. Diferente da
    * Mercado Pago, o payload da Asaas ja vem completo (nao precisa buscar o
    * estado na API) e a autenticacao e um token simples, nao HMAC.

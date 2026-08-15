@@ -28,6 +28,11 @@ export interface CreateCheckoutParams {
   expiredUrl: string;
 }
 
+interface AsaasPayment {
+  subscription?: string;
+  status?: string;
+}
+
 class AsaasRequestError extends Error {
   constructor(
     message: string,
@@ -110,6 +115,31 @@ export class AsaasService {
     await this.run('cancelar assinatura', () =>
       this.request('DELETE', `/subscriptions/${id}`),
     );
+  }
+
+  /**
+   * Consulta pontual usada no retorno do Checkout caso o webhook ainda não
+   * tenha sido entregue. Não substitui o webhook nem faz polling contínuo.
+   */
+  async findConfirmedSubscription(
+    externalReference: string,
+  ): Promise<string | null> {
+    return this.run('consultar pagamento', async () => {
+      const query = new URLSearchParams({
+        externalReference,
+        limit: '10',
+      });
+      const result = await this.request<{ data: AsaasPayment[] }>(
+        'GET',
+        `/payments?${query.toString()}`,
+      );
+      const paid = result.data.find(
+        (payment) =>
+          Boolean(payment.subscription) &&
+          (payment.status === 'CONFIRMED' || payment.status === 'RECEIVED'),
+      );
+      return paid?.subscription ?? null;
+    });
   }
 
   private async request<T>(
