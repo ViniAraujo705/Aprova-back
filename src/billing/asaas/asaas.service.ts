@@ -78,7 +78,7 @@ export class AsaasService {
           name: params.name,
           email: params.email,
           cpfCnpj: params.cpfCnpj,
-          phoneNumber: params.phoneNumber,
+          phone: params.phoneNumber,
         },
         externalReference: params.externalReference,
         subscription: {
