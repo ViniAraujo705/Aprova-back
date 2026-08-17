@@ -21,7 +21,7 @@ const MEMBER_SELECT = {
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(accountId: string, dto: CreateProjectDto) {
+  async create(accountId: string, dto: CreateProjectDto, user: AuthUser) {
     await this.assertClientOwnership(accountId, dto.clientId);
     return createWithUniqueLinkPublico((linkPublico) =>
       this.prisma.project.create({
@@ -30,6 +30,12 @@ export class ProjectsService {
           clientId: dto.clientId,
           accountId,
           linkPublico,
+          // Um editor só acessa projetos nos quais consta em ProjectMember.
+          // Ao criar o projeto, ele precisa receber esse vínculo para poder
+          // vê-lo e enviar o primeiro vídeo imediatamente em seguida.
+          ...(user.role === UserRole.editor
+            ? { members: { create: { userId: user.id } } }
+            : {}),
         },
       }),
     );
