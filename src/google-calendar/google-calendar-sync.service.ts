@@ -8,6 +8,8 @@ import type { RawRecordingEvent } from '../recording-events/recording-events.ser
 
 // Usado quando o RecordingEvent nao tem dataFim (campo opcional).
 const DEFAULT_DURATION_MS = 60 * 60 * 1000;
+// Mantem o lembrete do Google Calendar alinhado ao aviso in-app de gravacao.
+const GOOGLE_REMINDER_MINUTES = 24 * 60;
 
 /**
  * Sync unidirecional (Aprova -> Google) do calendario de gravacoes:
@@ -105,6 +107,14 @@ export class GoogleCalendarSyncService {
       description: description || undefined,
       start: { dateTime: start.toISOString() },
       end: { dateTime: end.toISOString() },
+      // Nao depende da configuracao individual de lembretes do calendario.
+      // O popup e entregue pelo Google Calendar em dispositivos conectados.
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: 'popup', minutes: GOOGLE_REMINDER_MINUTES },
+        ],
+      },
     };
   }
 

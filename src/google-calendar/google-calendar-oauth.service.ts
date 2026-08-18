@@ -10,6 +10,13 @@ export interface CalendarEventPayload {
   description?: string;
   start: { dateTime: string };
   end: { dateTime: string };
+  reminders: {
+    useDefault: false;
+    overrides: Array<{
+      method: 'popup';
+      minutes: number;
+    }>;
+  };
 }
 
 /**
