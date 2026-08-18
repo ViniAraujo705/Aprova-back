@@ -30,6 +30,8 @@ import { ProjectReportService } from '../reports/project-report.service';
 import { PlansService } from '../plans/plans.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { LinkGoogleDriveItemDto } from '../google-drive/dto/link-google-drive-item.dto';
+import { GoogleDriveService } from '../google-drive/google-drive.service';
 
 @ApiTags('projects')
 @ApiBearerAuth()
@@ -41,6 +43,7 @@ export class ProjectsController {
     private readonly projectsService: ProjectsService,
     private readonly projectReportService: ProjectReportService,
     private readonly plansService: PlansService,
+    private readonly googleDriveService: GoogleDriveService,
   ) {}
 
   @Post()
@@ -123,5 +126,55 @@ export class ProjectsController {
     @Param('memberId', new ParseUUIDPipe({ version: '4' })) memberId: string,
   ) {
     return this.projectsService.removeMember(user.accountId, id, memberId);
+  }
+
+  @Get(':id/google-drive-items')
+  @ApiOperation({
+    summary:
+      'Lista os arquivos e pastas do Google Drive vinculados ao projeto.',
+  })
+  async listGoogleDriveItems(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    await this.projectsService.findOne(user.accountId, id, user);
+    return this.googleDriveService.listProjectItems(user.accountId, id);
+  }
+
+  @Post(':id/google-drive-items')
+  @ApiOperation({
+    summary:
+      'Vincula uma pasta ou arquivo da conta Google Drive conectada ao projeto.',
+  })
+  async linkGoogleDriveItem(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: LinkGoogleDriveItemDto,
+  ) {
+    await this.projectsService.findOne(user.accountId, id, user);
+    return this.googleDriveService.linkToProject(
+      user.accountId,
+      id,
+      user.id,
+      dto.googleFileId,
+    );
+  }
+
+  @Delete(':id/google-drive-items/:itemId')
+  @ApiOperation({
+    summary:
+      'Remove o vinculo de um item do Google Drive com o projeto, sem apagar o item no Drive.',
+  })
+  async unlinkGoogleDriveItem(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
+  ) {
+    await this.projectsService.findOne(user.accountId, id, user);
+    return this.googleDriveService.unlinkFromProject(
+      user.accountId,
+      id,
+      itemId,
+    );
   }
 }

@@ -228,8 +228,13 @@ model User {
   clientesResponsavel       Client[]
   // CrewMember(s) vinculados a esta conta (ver CrewMember.userId)
   crewMemberLinks         CrewMember[]
+  // Google Calendar pessoal conectado por este usuario (ver GoogleCalendarConnection)
+  googleCalendarConnection  GoogleCalendarConnection?
+  googleDriveConnection     GoogleDriveConnection?
+  recordingEventGoogleSyncs RecordingEventGoogleSync[]
   // Arquivos operacionais do cliente enviados por este usuario (ver ClientFile)
   clientFilesEnviados     ClientFile[]
+  driveItemsVinculados      ProjectGoogleDriveItem[]
   videoCollaborations     VideoCollaborator[]
   demandaCollaborations   DemandaCollaborator[]
 
@@ -350,12 +355,83 @@ model RecordingEvent {
   demanda       Demanda?             @relation(fields: [demandaId], references: [id], onDelete: SetNull)
   notifications Notification[]
   equipe        RecordingEventCrew[]
+  googleSyncs   RecordingEventGoogleSync[]
 
   @@index([accountId])
   @@index([clienteId])
   @@index([membroId])
   @@index([demandaId])
   @@map("recording_events")
+}
+
+// Google Calendar pessoal conectado por um usuario (OAuth auth-code, escopo
+// calendar.events) - usado pelo sync unidirecional Aprova -> Google dos
+// RecordingEvent. refreshTokenEnc e criptografado antes de persistir.
+model GoogleCalendarConnection {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  googleEmail     String?  @map("google_email")
+  refreshTokenEnc String   @map("refresh_token_enc")
+  criadoEm        DateTime @default(now()) @map("criado_em")
+  atualizadoEm    DateTime @updatedAt @map("atualizado_em")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("google_calendar_connections")
+}
+
+// Conexao OAuth pessoal com o Google Drive. O refresh token e criptografado
+// antes de persistir; a integracao so consulta metadados dos itens.
+model GoogleDriveConnection {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  googleEmail     String?  @map("google_email")
+  refreshTokenEnc String   @map("refresh_token_enc")
+  criadoEm        DateTime @default(now()) @map("criado_em")
+  atualizadoEm    DateTime @updatedAt @map("atualizado_em")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("google_drive_connections")
+}
+
+// Vinculo de uma pasta ou arquivo existente no Drive a um projeto. O conteudo
+// nao e copiado para o Aprova nem tem suas permissoes alteradas.
+model ProjectGoogleDriveItem {
+  id             String   @id @default(uuid())
+  projectId      String   @map("project_id")
+  linkedByUserId String?  @map("linked_by_user_id")
+  googleFileId   String   @map("google_file_id")
+  nome           String
+  mimeType       String   @map("mime_type")
+  isFolder       Boolean  @default(false) @map("is_folder")
+  webViewLink    String?  @map("web_view_link")
+  criadoEm       DateTime @default(now()) @map("criado_em")
+  atualizadoEm   DateTime @updatedAt @map("atualizado_em")
+
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  linkedByUser User?   @relation(fields: [linkedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, googleFileId])
+  @@index([linkedByUserId])
+  @@map("project_google_drive_items")
+}
+
+// Mapeia cada RecordingEvent -> evento criado no Google Calendar de cada
+// destinatario, para permitir editar/apagar o evento certo no Google.
+model RecordingEventGoogleSync {
+  id               String   @id @default(uuid())
+  recordingEventId String   @map("recording_event_id")
+  userId           String   @map("user_id")
+  googleEventId    String   @map("google_event_id")
+  criadoEm         DateTime @default(now()) @map("criado_em")
+
+  recordingEvent RecordingEvent @relation(fields: [recordingEventId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([recordingEventId, userId])
+  @@index([userId])
+  @@map("recording_event_google_sync")
 }
 
 // Pessoa da equipe de gravacao (freelancer, motorista etc.). Normalmente nao
@@ -544,6 +620,7 @@ model Project {
   videos     Video[]
   members    ProjectMember[]
   activities ClientActivity[]
+  googleDriveItems ProjectGoogleDriveItem[]
 
   @@index([clientId])
   @@index([accountId])

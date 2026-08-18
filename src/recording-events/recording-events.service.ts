@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { RecordingEventTipo } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { GoogleCalendarSyncService } from '../google-calendar/google-calendar-sync.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateRecordingEventDto } from './dto/create-recording-event.dto';
 import { UpdateRecordingEventDto } from './dto/update-recording-event.dto';
@@ -27,7 +28,7 @@ const RECORDING_EVENT_SELECT = {
   },
 } as const;
 
-type RawRecordingEvent = {
+export type RawRecordingEvent = {
   id: string;
   titulo: string;
   tipo: RecordingEventTipo;
@@ -60,6 +61,7 @@ function dedupe(ids: string[]): string[] {
 export class RecordingEventsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly googleSync: GoogleCalendarSyncService,
     private readonly notifications: NotificationsService,
   ) {}
 
@@ -89,6 +91,7 @@ export class RecordingEventsService {
       },
       select: RECORDING_EVENT_SELECT,
     });
+    await this.googleSync.syncOnCreate(event);
     return toDto(event);
   }
 
@@ -120,8 +123,10 @@ export class RecordingEventsService {
   }
 
   async update(accountId: string, id: string, dto: UpdateRecordingEventDto) {
-    // Garante que o evento pertence a conta antes de atualizar
-    await this.findOne(accountId, id);
+    // Garante que o evento pertence a conta antes de atualizar - shape cru
+    // (nao o DTO) porque o sync com o Google Calendar precisa comparar
+    // destinatarios antes/depois (membroId + equipe[].crewMember.userId).
+    const oldEvent = await this.findRaw(accountId, id);
     await this.assertRefsBelongToAccount(accountId, dto);
     const equipeIds =
       dto.equipeIds !== undefined ? dedupe(dto.equipeIds) : undefined;
@@ -168,12 +173,21 @@ export class RecordingEventsService {
         select: RECORDING_EVENT_SELECT,
       });
     });
+    await this.googleSync.syncOnUpdate(oldEvent, event);
     return toDto(event);
   }
 
   async remove(accountId: string, id: string) {
     await this.findRaw(accountId, id);
+    // Le as linhas de sync ANTES de apagar o evento - o cascade do banco
+    // (onDelete: Cascade em RecordingEventGoogleSync) ja teria apagado
+    // essas linhas se lidas depois.
+    const syncRows = await this.prisma.recordingEventGoogleSync.findMany({
+      where: { recordingEventId: id },
+      select: { userId: true, googleEventId: true },
+    });
     await this.prisma.recordingEvent.delete({ where: { id } });
+    await this.googleSync.syncOnDelete(syncRows);
     return { deleted: true };
   }
 
