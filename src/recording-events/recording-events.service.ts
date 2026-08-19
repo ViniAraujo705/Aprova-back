@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { RecordingEventTipo } from '@prisma/client';
+import { RecordingEventTipo, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GoogleCalendarSyncService } from '../google-calendar/google-calendar-sync.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -213,10 +213,19 @@ export class RecordingEventsService {
     const userIds = requestedIds
       .map((crewMemberId) => crewById.get(crewMemberId)?.userId)
       .filter((userId): userId is string => !!userId);
+    const owners = await this.prisma.membership.findMany({
+      where: { accountId, role: UserRole.owner },
+      select: { userId: true },
+    });
+    const recipientIds = [
+      ...owners.map((owner) => owner.userId),
+      ...(event.membroId ? [event.membroId] : []),
+      ...userIds,
+    ];
     const notificados = await this.notifications.notifyRecordingEvent(
       accountId,
       event.id,
-      userIds,
+      recipientIds,
     );
     return { notificados };
   }

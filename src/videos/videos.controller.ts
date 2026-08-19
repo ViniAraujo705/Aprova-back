@@ -137,7 +137,7 @@ export class VideosController {
   @Roles(UserRole.owner)
   @ApiOperation({
     summary:
-      'Owner define ou remove o editor (ou owner) responsavel pelo video. Usado no desempenho da equipe.',
+      'Owner substitui as pessoas (owners ou editores) responsaveis pelo video. Envie editorIds: [] para limpar.',
   })
   updateEditorResponsavel(
     @CurrentUser() user: AuthUser,
@@ -147,7 +147,7 @@ export class VideosController {
     return this.videosService.updateEditorResponsavel(
       user.accountId,
       id,
-      dto.editorId,
+      dto.editorIds,
       user,
     );
   }

@@ -58,7 +58,8 @@ export class RecordingEventsController {
 
   @Post(':id/notify')
   @ApiOperation({
-    summary: 'Envia lembrete in-app para a equipe vinculada ao evento.',
+    summary:
+      'Envia lembrete in-app para os owners, membro responsavel e equipe selecionada do evento.',
   })
   notify(
     @CurrentUser() user: AuthUser,

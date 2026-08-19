@@ -40,19 +40,22 @@ const DEFAULT_MAX_VIDEO_SIZE_MB = 2048; // 2 GB
 const KANBAN_RELATIONS = {
   labels: { select: { labelId: true } },
   collaborators: { select: { userId: true } },
+  responsaveis: { select: { userId: true } },
 } as const;
 
 function toVideoDto<
   T extends {
     labels: { labelId: string }[];
     collaborators: { userId: string }[];
+    responsaveis: { userId: string }[];
   },
 >(video: T) {
-  const { labels, collaborators, ...rest } = video;
+  const { labels, collaborators, responsaveis, ...rest } = video;
   return {
     ...rest,
     labelIds: labels.map((label) => label.labelId),
     collaboratorIds: collaborators.map((collaborator) => collaborator.userId),
+    editorIds: responsaveis.map((responsavel) => responsavel.userId),
   };
 }
 
@@ -276,13 +279,15 @@ export class VideosService {
     user: AuthUser,
   ) {
     await this.getOwnedVideo(accountId, id, user);
-    return this.prisma.video.update({
+    const video = await this.prisma.video.update({
       where: { id },
       data: {
         status,
         ...(status === VideoStatus.aprovado ? { aprovadoEm: new Date() } : {}),
       },
+      include: KANBAN_RELATIONS,
     });
+    return toVideoDto(video);
   }
 
   /**
@@ -296,10 +301,12 @@ export class VideosService {
     user: AuthUser,
   ) {
     await this.getOwnedVideo(accountId, id, user);
-    return this.prisma.video.update({
+    const video = await this.prisma.video.update({
       where: { id },
       data: { etapaProducao: etapa },
+      include: KANBAN_RELATIONS,
     });
+    return toVideoDto(video);
   }
 
   /**
@@ -314,10 +321,12 @@ export class VideosService {
     user: AuthUser,
   ) {
     await this.getOwnedVideo(accountId, id, user);
-    return this.prisma.video.update({
+    const video = await this.prisma.video.update({
       where: { id },
       data: { deadline: dto.deadline ? new Date(dto.deadline) : null },
+      include: KANBAN_RELATIONS,
     });
+    return toVideoDto(video);
   }
 
   async updateTitulo(
@@ -327,44 +336,53 @@ export class VideosService {
     user: AuthUser,
   ) {
     await this.getOwnedVideo(accountId, id, user);
-    return this.prisma.video.update({
+    const video = await this.prisma.video.update({
       where: { id },
       data: { nomeArquivo: dto.nomeArquivo },
+      include: KANBAN_RELATIONS,
     });
+    return toVideoDto(video);
   }
 
   /**
-   * Define/remove o editor (ou owner) responsavel pelo video. Alimenta o
-   * desempenho da equipe (media de nota geral dos videos aprovados).
+   * Substitui a lista de pessoas (owner ou editor) responsaveis pelo video.
+   * Uma lista vazia remove todas as atribuicoes. Cada responsavel recebe
+   * credito integral no desempenho da equipe.
    */
   async updateEditorResponsavel(
     accountId: string,
     id: string,
-    editorId: string | null,
+    editorIds: string[],
     user: AuthUser,
   ) {
     await this.getOwnedVideo(accountId, id, user);
 
-    if (editorId) {
-      const membro = await this.prisma.membership.findFirst({
+    if (editorIds.length > 0) {
+      const membrosValidos = await this.prisma.membership.count({
         where: {
-          userId: editorId,
+          userId: { in: editorIds },
           accountId,
           role: { in: [UserRole.owner, UserRole.editor] },
         },
-        select: { userId: true },
       });
-      if (!membro) {
+      if (membrosValidos !== editorIds.length) {
         throw new BadRequestException(
-          'editorId invalido ou nao pertence a esta conta',
+          'editorIds contem membro invalido ou que nao pertence a esta conta',
         );
       }
     }
 
-    return this.prisma.video.update({
+    const video = await this.prisma.video.update({
       where: { id },
-      data: { editorResponsavelId: editorId },
+      data: {
+        responsaveis: {
+          deleteMany: {},
+          create: editorIds.map((userId) => ({ userId })),
+        },
+      },
+      include: KANBAN_RELATIONS,
     });
+    return toVideoDto(video);
   }
 
   async updateKanbanMetadata(

@@ -46,8 +46,8 @@ export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Cria a notificacao para os owners da conta + o editor responsavel pelo
-   * video (se houver). Chamado internamente pelos fluxos publicos do
+   * Cria a notificacao para os owners da conta + todas as pessoas responsaveis
+   * pelo video. Chamado internamente pelos fluxos publicos do
    * cliente (comentario, aprovacao, ajuste, avaliacao) - nunca exposto via
    * controller.
    *
@@ -61,7 +61,7 @@ export class NotificationsService {
       const video = await this.prisma.video.findUnique({
         where: { id: videoId },
         select: {
-          editorResponsavelId: true,
+          responsaveis: { select: { userId: true } },
           project: { select: { accountId: true } },
         },
       });
@@ -75,8 +75,8 @@ export class NotificationsService {
       });
 
       const recipientIds = new Set(owners.map((o) => o.userId));
-      if (video.editorResponsavelId) {
-        recipientIds.add(video.editorResponsavelId);
+      for (const responsavel of video.responsaveis) {
+        recipientIds.add(responsavel.userId);
       }
       if (recipientIds.size === 0) {
         return;
@@ -171,10 +171,9 @@ export class NotificationsService {
 
   /**
    * Cron: lembra de uma gravacao (RecordingEvent) que comeca em ate 24h.
-   * Destinatarios: todo owner da conta (sempre) + cada CrewMember escalado
-   * no evento que tenha userId (a pessoa vinculada a uma conta real, seja
-   * owner ou editor) - freelancers sem conta (userId null) nao recebem
-   * nada, nao ha pra quem notificar.
+   * Destinatarios: todo owner da conta (sempre) + o membro responsavel do
+   * evento + cada CrewMember escalado que tenha userId. Freelancers sem
+   * conta (userId null) nao recebem nada, nao ha pra quem notificar.
    *
    * Nao filtra eventos que ja tem alguma notificacao (ao contrario da
    * versao anterior): a equipe pode ganhar gente nova (POST/PATCH
@@ -196,6 +195,7 @@ export class NotificationsService {
         select: {
           id: true,
           accountId: true,
+          membroId: true,
           equipe: { select: { crewMember: { select: { userId: true } } } },
         },
       });
@@ -214,6 +214,7 @@ export class NotificationsService {
 
         const recipientIds = new Set([
           ...owners.map((owner) => owner.userId),
+          ...(event.membroId ? [event.membroId] : []),
           ...crewUserIds,
         ]);
         if (recipientIds.size === 0) {
