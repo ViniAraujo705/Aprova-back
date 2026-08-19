@@ -213,8 +213,8 @@ model User {
 
   memberships             Membership[]
   comments                Comment[]
-  // Videos em que este usuario (owner ou editor) e o responsavel designado
-  videosResponsavel       Video[]
+  // Videos em que este usuario (owner ou editor) e uma das pessoas responsaveis.
+  videosResponsavel       VideoResponsavel[]
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
   notifications           Notification[]
@@ -575,10 +575,8 @@ model Video {
   // Prazo de entrega definido pelo owner. Visivel apenas para owner/editor —
   // NUNCA deve ser selecionado nas queries do canal publico (cliente).
   deadline            DateTime?           @map("deadline")
-  // Editor (ou owner) da conta responsavel por este video. Definido pelo owner.
-  editorResponsavelId String?             @map("editor_responsavel_id")
   // Nota geral (1-5) dada pelo cliente no momento da aprovacao. Alimenta o
-  // desempenho da equipe (media por editor responsavel).
+  // desempenho da equipe (media por pessoa responsavel).
   notaGeral           Int?                @map("nota_geral")
   // Etapa de producao interna (board Kanban) - ver EtapaProducao.
   etapaProducao       EtapaProducao       @default(planejado) @map("etapa_producao")
@@ -589,17 +587,16 @@ model Video {
   versoes           Video[]          @relation("VersionHistory")
   comments          Comment[]
   ratings           Rating[]
-  editorResponsavel User?            @relation(fields: [editorResponsavelId], references: [id], onDelete: SetNull)
   notifications     Notification[]
   portfolioVideos   PortfolioVideo[]
   demandas          Demanda[]
   activities        ClientActivity[]
   labels            VideoLabel[]
   collaborators     VideoCollaborator[]
+  responsaveis      VideoResponsavel[]
 
   @@index([projectId])
   @@index([videoPaiId])
-  @@index([editorResponsavelId])
   @@map("videos")
 }
 
@@ -698,7 +695,7 @@ model DemandaLabel {
 }
 
 // Colaborador e uma marcacao informativa de um membro da conta; nao altera
-// o responsavel unico do Video/Demanda.
+// as pessoas responsaveis do Video nem o responsavel da Demanda.
 model VideoCollaborator {
   videoId String @map("video_id")
   userId  String @map("user_id")
@@ -709,6 +706,21 @@ model VideoCollaborator {
   @@id([videoId, userId])
   @@index([userId])
   @@map("video_collaborators")
+}
+
+// Pessoas responsaveis por um video. A associacao explicita permite que um
+// video tenha mais de um owner/editor responsavel e preserva a consulta por
+// pessoa usada pelo painel de desempenho.
+model VideoResponsavel {
+  videoId String @map("video_id")
+  userId  String @map("user_id")
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([videoId, userId])
+  @@index([userId])
+  @@map("video_responsaveis")
 }
 
 model DemandaCollaborator {
