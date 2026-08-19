@@ -1,7 +1,8 @@
-import { IsOptional, IsUUID } from 'class-validator';
+import { ArrayUnique, IsArray, IsUUID } from 'class-validator';
 
 export class UpdateEditorResponsavelDto {
-  @IsOptional()
-  @IsUUID('4', { message: 'editorId invalido' })
-  editorId: string | null;
+  @IsArray({ message: 'editorIds deve ser uma lista' })
+  @ArrayUnique({ message: 'editorIds nao pode conter ids repetidos' })
+  @IsUUID('4', { each: true, message: 'editorIds contem id invalido' })
+  editorIds: string[];
 }
