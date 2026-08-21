@@ -26,6 +26,7 @@ enum UserStatus {
 // pagamento integrado ainda: a troca de plano hoje e manual, via endpoint
 // admin (PATCH /admin/accounts/:id/plan).
 enum Plan {
+  portfolio
   free
   pro
   agencia

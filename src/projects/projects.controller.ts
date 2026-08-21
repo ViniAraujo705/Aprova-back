@@ -69,7 +69,7 @@ export class ProjectsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Res() res: Response,
   ) {
-    await this.plansService.assertFeature(user.accountId, 'pdfReports');
+    await this.plansService.assertLevelFeature(user.accountId, 'reports');
     const { buffer, filename } = await this.projectReportService.generate(
       user.accountId,
       id,

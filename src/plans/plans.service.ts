@@ -3,18 +3,41 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InviteStatus, Plan, UserRole } from '@prisma/client';
+import { InviteStatus, Plan } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PLAN_LIMITS, PlanLimits } from './plan-limits.config';
 
 export type PlanFeature =
-  'whiteLabel' | 'pdfReports' | 'priorityQueue' | 'teamPerformance';
+  | 'whiteLabel'
+  | 'teamPerformance'
+  | 'priorityProcessing'
+  | 'prioritySupport'
+  | 'publicPortfolio'
+  | 'changeRequests'
+  | 'clientApproval'
+  | 'contentCalendar'
+  | 'publishContent';
+
+export type PlanLevelFeature =
+  'recordingManagement' | 'deliveryManagement' | 'clientArea' | 'reports';
 
 const FEATURE_LABELS: Record<PlanFeature, string> = {
   whiteLabel: 'marca propria (white-label)',
-  pdfReports: 'relatorios em PDF',
-  priorityQueue: 'prioridade na fila de processamento',
   teamPerformance: 'desempenho da equipe',
+  priorityProcessing: 'prioridade na fila de processamento',
+  prioritySupport: 'suporte prioritario',
+  publicPortfolio: 'portfolio publico',
+  changeRequests: 'solicitacao de alteracoes',
+  clientApproval: 'aprovacao pelo cliente',
+  contentCalendar: 'calendario de conteudo',
+  publishContent: 'disponibilizar conteudo para postagem',
+};
+
+const LEVEL_FEATURE_LABELS: Record<PlanLevelFeature, string> = {
+  recordingManagement: 'gestao de gravacoes',
+  deliveryManagement: 'gestao de entregas',
+  clientArea: 'area do cliente',
+  reports: 'relatorios',
 };
 
 @Injectable()
@@ -40,14 +63,28 @@ export class PlansService {
   }
 
   async getUsage(accountId: string) {
-    const [clients, extraEditors, videosThisMonth, ratingQuestions] =
-      await Promise.all([
-        this.prisma.client.count({ where: { accountId } }),
-        this.countExtraEditors(accountId),
-        this.countVideosThisMonth(accountId),
-        this.prisma.ratingQuestion.count({ where: { accountId } }),
-      ]);
-    return { clients, extraEditors, videosThisMonth, ratingQuestions };
+    const [
+      clients,
+      teamMembers,
+      approvalFilesThisMonth,
+      portfolioProjects,
+      ratingQuestions,
+    ] = await Promise.all([
+      this.prisma.client.count({ where: { accountId } }),
+      this.countTeamMembers(accountId),
+      this.countApprovalFilesThisMonth(accountId),
+      this.prisma.portfolioVideo.count({
+        where: { portfolio: { accountId } },
+      }),
+      this.prisma.ratingQuestion.count({ where: { accountId } }),
+    ]);
+    return {
+      clients,
+      teamMembers,
+      approvalFilesThisMonth,
+      portfolioProjects,
+      ratingQuestions,
+    };
   }
 
   async assertCanAddClient(accountId: string): Promise<void> {
@@ -65,26 +102,26 @@ export class PlansService {
 
   async assertCanInviteEditor(accountId: string): Promise<void> {
     const plan = await this.getPlan(accountId);
-    const { maxExtraEditors } = this.limitsFor(plan);
-    const count = await this.countExtraEditors(accountId);
-    if (count >= maxExtraEditors) {
+    const { maxTeamMembers } = this.limitsFor(plan);
+    if (maxTeamMembers === null) return;
+
+    const count = await this.countTeamMembers(accountId);
+    if (count >= maxTeamMembers) {
       throw new ForbiddenException(
-        maxExtraEditors === 0
-          ? `O plano ${plan} nao permite convidar editores. Faca upgrade para o plano Agencia.`
-          : `Limite de ${maxExtraEditors} editores do plano ${plan} atingido. Faca upgrade para convidar mais.`,
+        `Limite de ${maxTeamMembers} membros do plano ${plan} atingido. Faca upgrade para convidar mais.`,
       );
     }
   }
 
   async assertCanCreateVideo(accountId: string): Promise<void> {
     const plan = await this.getPlan(accountId);
-    const { maxVideosPerMonth } = this.limitsFor(plan);
-    if (maxVideosPerMonth === null) return;
+    const { maxApprovalFilesPerMonth } = this.limitsFor(plan);
+    if (maxApprovalFilesPerMonth === null) return;
 
-    const count = await this.countVideosThisMonth(accountId);
-    if (count >= maxVideosPerMonth) {
+    const count = await this.countApprovalFilesThisMonth(accountId);
+    if (count >= maxApprovalFilesPerMonth) {
       throw new ForbiddenException(
-        `Limite de ${maxVideosPerMonth} videos no mes do plano ${plan} atingido. Faca upgrade para enviar mais videos.`,
+        `Limite de ${maxApprovalFilesPerMonth} videos/arquivos no mes do plano ${plan} atingido. Faca upgrade para enviar mais.`,
       );
     }
   }
@@ -104,11 +141,40 @@ export class PlansService {
     }
   }
 
+  async assertCanAddPortfolioProject(accountId: string): Promise<void> {
+    const plan = await this.getPlan(accountId);
+    const { maxPortfolioProjects } = this.limitsFor(plan);
+    if (maxPortfolioProjects === null) return;
+
+    const count = await this.prisma.portfolioVideo.count({
+      where: { portfolio: { accountId } },
+    });
+    if (count >= maxPortfolioProjects) {
+      throw new ForbiddenException(
+        `Limite de ${maxPortfolioProjects} projetos no portfolio do plano ${plan} atingido. Faca upgrade para adicionar mais.`,
+      );
+    }
+  }
+
   async assertFeature(accountId: string, feature: PlanFeature): Promise<void> {
     const plan = await this.getPlan(accountId);
     if (!this.limitsFor(plan)[feature]) {
       throw new ForbiddenException(
         `Recurso "${FEATURE_LABELS[feature]}" nao esta disponivel no plano ${plan}. Faca upgrade para usar.`,
+      );
+    }
+  }
+
+  /** Bloqueia apenas quando o nivel do recurso for "none" no plano. */
+  async assertLevelFeature(
+    accountId: string,
+    feature: PlanLevelFeature,
+  ): Promise<void> {
+    const plan = await this.getPlan(accountId);
+    const level = this.limitsFor(plan)[feature];
+    if (level === 'none') {
+      throw new ForbiddenException(
+        `Recurso "${LEVEL_FEATURE_LABELS[feature]}" nao esta disponivel no plano ${plan}. Faca upgrade para usar.`,
       );
     }
   }
@@ -129,20 +195,18 @@ export class PlansService {
     });
   }
 
-  /** Editores ativos + convites pendentes (owners nao contam no limite). */
-  private async countExtraEditors(accountId: string): Promise<number> {
-    const [activeEditors, pendingInvites] = await Promise.all([
-      this.prisma.membership.count({
-        where: { accountId, role: UserRole.editor },
-      }),
+  /** Membros ativos (qualquer role, inclui owner) + convites pendentes. */
+  private async countTeamMembers(accountId: string): Promise<number> {
+    const [members, pendingInvites] = await Promise.all([
+      this.prisma.membership.count({ where: { accountId } }),
       this.prisma.invite.count({
         where: { accountId, status: InviteStatus.pendente },
       }),
     ]);
-    return activeEditors + pendingInvites;
+    return members + pendingInvites;
   }
 
-  private countVideosThisMonth(accountId: string): Promise<number> {
+  private countApprovalFilesThisMonth(accountId: string): Promise<number> {
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);

@@ -10,7 +10,6 @@ import {
   ClientActivityAtorTipo,
   ClientActivityType,
   EtapaProducao,
-  Plan,
   Prisma,
   UserRole,
   UserStatus,
@@ -462,10 +461,10 @@ export class VideosService {
     return { deleted: true };
   }
 
-  /** Contas no plano Agencia processam antes das demais na fila. */
+  /** Contas com prioridade de processamento no plano processam antes das demais na fila. */
   private async processingPriority(accountId: string): Promise<number> {
     const plan = await this.plans.getPlan(accountId);
-    return plan === Plan.agencia
+    return this.plans.limitsFor(plan).priorityProcessing
       ? VIDEO_PROCESSING_PRIORITY_HIGH
       : VIDEO_PROCESSING_PRIORITY_DEFAULT;
   }

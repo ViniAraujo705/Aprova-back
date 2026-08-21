@@ -122,6 +122,8 @@ export class BillingService {
     if (account.asaasSubscriptionId) return { plan: account.plan };
 
     const candidates: Array<{ plan: BillablePlan; cycle: BillableCycle }> = [
+      { plan: 'portfolio', cycle: 'MONTHLY' },
+      { plan: 'portfolio', cycle: 'YEARLY' },
       { plan: 'pro', cycle: 'MONTHLY' },
       { plan: 'pro', cycle: 'YEARLY' },
       { plan: 'agencia', cycle: 'MONTHLY' },
@@ -134,9 +136,8 @@ export class BillingService {
         candidate.plan,
         candidate.cycle,
       );
-      const subscription = await this.asaas.findConfirmedSubscription(
-        externalReference,
-      );
+      const subscription =
+        await this.asaas.findConfirmedSubscription(externalReference);
       if (!subscription) continue;
 
       const updated = await this.prisma.account.update({
@@ -266,7 +267,9 @@ export class BillingService {
     return this.buildCheckoutReturnUrl('sucesso');
   }
 
-  private buildCheckoutReturnUrl(status: 'sucesso' | 'cancelado' | 'expirado'): string {
+  private buildCheckoutReturnUrl(
+    status: 'sucesso' | 'cancelado' | 'expirado',
+  ): string {
     const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
       .split(',')[0]
       .trim()
@@ -286,7 +289,11 @@ export class BillingService {
   ): { accountId: string; plan: BillablePlan; cycle: BillableCycle } | null {
     if (!externalReference) return null;
     const [accountId, plan, cycle] = externalReference.split(':');
-    if (!accountId || (plan !== 'pro' && plan !== 'agencia')) return null;
+    if (
+      !accountId ||
+      (plan !== 'portfolio' && plan !== 'pro' && plan !== 'agencia')
+    )
+      return null;
     if (cycle !== 'MONTHLY' && cycle !== 'YEARLY') return null;
     return { accountId, plan, cycle };
   }
