@@ -7,6 +7,7 @@ import { RecordingEventTipo, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GoogleCalendarSyncService } from '../google-calendar/google-calendar-sync.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PlansService } from '../plans/plans.service';
 import { CreateRecordingEventDto } from './dto/create-recording-event.dto';
 import { UpdateRecordingEventDto } from './dto/update-recording-event.dto';
 import { NotifyRecordingEventDto } from './dto/notify-recording-event.dto';
@@ -63,9 +64,11 @@ export class RecordingEventsService {
     private readonly prisma: PrismaService,
     private readonly googleSync: GoogleCalendarSyncService,
     private readonly notifications: NotificationsService,
+    private readonly plans: PlansService,
   ) {}
 
   async create(accountId: string, dto: CreateRecordingEventDto) {
+    await this.plans.assertLevelFeature(accountId, 'recordingManagement');
     await this.assertRefsBelongToAccount(accountId, dto);
     const equipeIds = dto.equipeIds ? dedupe(dto.equipeIds) : [];
     const demandaId = await this.resolveDemandaId(accountId, dto.demandaId);

@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PortfolioMediaType, Plan, PortfolioVideo } from '@prisma/client';
+import { PortfolioMediaType, PortfolioVideo } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { createWithUniqueSlugLinkPublico } from '../common/short-id.util';
 import { StorageService } from '../storage/storage.service';
@@ -125,6 +125,7 @@ export class PortfoliosService {
     dto: AddExistingVideoDto,
   ) {
     await this.getOwnedPortfolio(accountId, portfolioId);
+    await this.plans.assertCanAddPortfolioProject(accountId);
 
     const video = await this.prisma.video.findFirst({
       where: { id: dto.videoId, project: { accountId } },
@@ -210,6 +211,7 @@ export class PortfoliosService {
     dto: PortfolioUploadCompleteDto,
   ) {
     await this.getOwnedPortfolio(accountId, portfolioId);
+    await this.plans.assertCanAddPortfolioProject(accountId);
     await this.validateUploadedFile(dto.urlStorage);
 
     const ordem = await this.nextOrdem(portfolioId);
@@ -312,10 +314,10 @@ export class PortfoliosService {
     return last ? last.ordem + 1 : 0;
   }
 
-  /** Contas no plano Agencia processam antes das demais na fila. */
+  /** Contas com prioridade de processamento no plano processam antes das demais na fila. */
   private async processingPriority(accountId: string): Promise<number> {
     const plan = await this.plans.getPlan(accountId);
-    return plan === Plan.agencia
+    return this.plans.limitsFor(plan).priorityProcessing
       ? VIDEO_PROCESSING_PRIORITY_HIGH
       : VIDEO_PROCESSING_PRIORITY_DEFAULT;
   }

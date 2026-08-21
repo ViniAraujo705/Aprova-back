@@ -1155,61 +1155,86 @@ Autenticado — `owner` ou `editor`.
 {
   "plan": "free",
   "limits": {
-    "maxClients": 3,
-    "maxVideosPerMonth": 8,
+    "maxClients": 1,
+    "maxTeamMembers": 1,
+    "maxApprovalFilesPerMonth": 10,
+    "maxPortfolioProjects": 6,
     "maxRatingQuestions": 3,
-    "maxExtraEditors": 0,
-    "whiteLabel": false,
-    "pdfReports": false,
-    "priorityQueue": false,
+    "storageGb": 5,
+    "publicPortfolio": true,
+    "changeRequests": true,
+    "clientApproval": true,
+    "recordingManagement": "basic",
+    "deliveryManagement": "basic",
+    "contentCalendar": false,
+    "clientArea": "basic",
+    "publishContent": false,
+    "reports": "none",
     "teamPerformance": false,
-    "storageGb": 5
+    "priorityProcessing": false,
+    "prioritySupport": false,
+    "whiteLabel": false
   },
   "usage": {
-    "clients": 2,
-    "extraEditors": 0,
-    "videosThisMonth": 5,
+    "clients": 1,
+    "teamMembers": 1,
+    "approvalFilesThisMonth": 5,
+    "portfolioProjects": 2,
     "ratingQuestions": 3
   }
 }
 ```
 
-Planos: `free`, `pro`, `agencia`. `limits.*` com valor `null` significa
-ilimitado. `storageGb` é só informativo (exibição na UI) — não há
-enforcement de armazenamento hoje, pois o tamanho do arquivo de vídeo não é
-persistido (mesma limitação descrita em `GET /admin/metrics`).
+Planos: `portfolio`, `free`, `pro`, `agencia`. `limits.*` numérico com valor
+`null` significa ilimitado. `recordingManagement`/`deliveryManagement`/
+`clientArea` valem `"none"|"basic"|"complete"`; `reports` vale
+`"none"|"basic"|"advanced"` — hoje só `"none"` é de fato bloqueado no
+backend (`PlansService.assertLevelFeature`), a diferença basic/complete/
+advanced é só informativa pra UI. `storageGb` é só informativo (exibição na
+UI) — não há enforcement de armazenamento hoje, pois o tamanho do arquivo
+de vídeo não é persistido (mesma limitação descrita em `GET
+/admin/metrics`). `contentCalendar`/`publishContent`/`deliveryManagement`/
+`clientArea` também são só informativos hoje — não existe rota que
+implemente esses recursos separadamente do resto.
 
-Não existe gateway de pagamento integrado ainda — a troca de plano hoje é
-manual, via `PATCH /admin/accounts/:id/plan` (seção [Admin](#admin)). Toda
-conta nova começa no plano `free`.
+A troca de plano fora do checkout (ex.: suporte) é manual, via `PATCH
+/admin/accounts/:id/plan` (seção [Admin](#admin)). Toda conta nova começa
+no plano `free`.
 
 Ações bloqueadas pelo limite do plano respondem `403 Forbidden` com uma
-mensagem explicando o limite atingido (ex: "Limite de 3 clientes do plano
+mensagem explicando o limite atingido (ex: "Limite de 1 clientes do plano
 free atingido..."). Isso acontece em:
 - `POST /clients` — limite de clientes (`maxClients`)
-- `POST /account/invite` — limite de editores (`maxExtraEditors`; convites
-  pendentes contam)
-- `POST /videos` — limite de vídeos no mês (`maxVideosPerMonth`; novas
-  versões de um vídeo existente não contam)
+- `POST /account/invite` — limite de membros (`maxTeamMembers`, conta
+  owner(s) + editores + convites pendentes)
+- `POST /videos` — limite de vídeos/arquivos no mês
+  (`maxApprovalFilesPerMonth`; novas versões de um vídeo existente não
+  contam)
+- `POST /portfolios/:id/videos` e `POST /portfolios/:id/videos/upload-complete` —
+  limite de itens no portfólio (`maxPortfolioProjects`, somado entre todos
+  os portfólios da conta)
 - `POST /rating-questions` — limite de perguntas (`maxRatingQuestions`)
+- `POST /recording-events` — exige `recordingManagement` diferente de
+  `"none"`
 - `PATCH /users/me/branding` (quando envia `logoUrl` ou `corDestaque`) —
   exige `whiteLabel`
-- `GET /projects/:id/report` — exige `pdfReports`
+- `GET /projects/:id/report` — exige `reports` diferente de `"none"`
 - `GET /team/performance` — exige `teamPerformance` (só plano `agencia`)
 
-Contas no plano `agencia` também têm prioridade na fila de processamento
-de vídeo (thumbnail/otimização) sobre os demais planos.
+Contas com `priorityProcessing` no plano (hoje só `agencia`) também têm
+prioridade na fila de processamento de vídeo (thumbnail/otimização) sobre
+os demais planos.
 
 ---
 
 ## Pagamento (`/billing`)
 Gateway: **Asaas Checkout** (página hospedada + Subscription). Assinatura
-recorrente via cartão de crédito pra os planos `pro`/`agencia`. `free` não é assinável (é o padrão
-de toda conta nova).
+recorrente via cartão de crédito pra os planos `portfolio`/`pro`/`agencia`.
+`free` não é assinável (é o padrão de toda conta nova).
 
 | Método | Rota | Auth | Body | Retorno |
 |---|---|---|---|---|
-| `POST` | `/billing/checkout` | `owner` | `{ plan: "pro"\|"agencia", cycle: "MONTHLY"\|"YEARLY", cpfCnpj, phoneNumber, postalCode, address, addressNumber, complement?, province }` | `{ url }` |
+| `POST` | `/billing/checkout` | `owner` | `{ plan: "portfolio"\|"pro"\|"agencia", cycle: "MONTHLY"\|"YEARLY", cpfCnpj, phoneNumber, postalCode, address, addressNumber, complement?, province }` | `{ url }` |
 | `POST` | `/billing/cancel` | `owner` | — | `{ plan: "free" }` |
 | `POST` | `/billing/webhooks/asaas` | **sem autenticação** (verificado por token) | payload da Asaas | `{ received: true }` |
 
@@ -1708,7 +1733,7 @@ Autenticado — **somente role `admin`**.
 | `GET` | `/admin/metrics` | — | métricas gerais da plataforma |
 | `GET` | `/admin/videos/errors` | — | vídeos com `statusProcessamento = erro` |
 | `POST` | `/admin/videos/:id/reprocess` | — | reenfileira thumbnail + versão otimizada |
-| `PATCH` | `/admin/accounts/:id/plan` | `{ plan: "free" \| "pro" \| "agencia" }` | `{ id, nomeAgencia, plan }` |
+| `PATCH` | `/admin/accounts/:id/plan` | `{ plan: "portfolio" \| "free" \| "pro" \| "agencia" }` | `{ id, nomeAgencia, plan }` |
 
 `GET /admin/users` → cada item:
 ```json

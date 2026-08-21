@@ -1,8 +1,16 @@
-import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 import { BillableCycle, BillablePlan } from '../plan-billing.config';
 
 export class CreateCheckoutDto {
-  @IsIn(['pro', 'agencia'], { message: 'plan deve ser: pro ou agencia' })
+  @IsIn(['portfolio', 'pro', 'agencia'], {
+    message: 'plan deve ser: portfolio, pro ou agencia',
+  })
   plan: BillablePlan;
 
   @IsIn(['MONTHLY', 'YEARLY'], {
