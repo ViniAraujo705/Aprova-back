@@ -123,6 +123,23 @@ export class StorageService {
   }
 
   /**
+   * Abre um objeto do R2 como stream, sem tocar o disco nem carregar o
+   * conteudo em memoria. Usado pelo download em lote, que costura varios
+   * objetos direto no zip enviado ao cliente.
+   */
+  async getObjectStream(
+    key: string,
+  ): Promise<{ stream: Readable; sizeBytes: number | null }> {
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+    return {
+      stream: response.Body as Readable,
+      sizeBytes: response.ContentLength ?? null,
+    };
+  }
+
+  /**
    * Envia um arquivo local para o R2 sob a key informada e retorna a
    * URL publica. Usado para thumbnail e versao otimizada geradas no worker.
    * Faz streaming direto do disco (multipart via lib-storage) em vez de

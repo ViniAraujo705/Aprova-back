@@ -1522,6 +1522,67 @@ faz o merge campo a campo: `cliente.branding.logoUrl ?? agencia.logoUrl`,
 `cliente.branding.corDestaque ?? agencia.corDestaque` (a marca do cliente
 pode setar só o logo, só a cor, ou os dois).
 
+### `POST /public/projects/:linkPublico/download`
+Rate limit próprio: 20/min. Download **em lote** da entrega: monta um único
+ZIP com os vídeos selecionados da galeria. Existe porque o Safari do iPhone
+bloqueia vários downloads disparados a partir de um único toque — baixar
+vídeo por vídeo não funciona no celular.
+
+Corpo:
+```json
+{ "videoLinks": ["link-publico-1", "link-publico-2"] }
+```
+`videoLinks` são os `link` de `GET /public/projects/:linkPublico` (o
+`linkPublico` de cada vídeo), no máximo **50** por request. Links repetidos
+são ignorados; a ordem enviada é a ordem dos arquivos dentro do ZIP.
+
+Resposta:
+```json
+{
+  "url": "https://api.../api/public/projects/abc123/download/eJyr...VGRk",
+  "filename": "entrega-campanha-verao.zip",
+  "totalVideos": 2,
+  "totalBytes": 734003200,
+  "expiresIn": 900,
+  "skipped": [{ "link": "link-publico-3", "reason": "processing" }]
+}
+```
+Esta rota **não** devolve o ZIP: ela valida a seleção e devolve `url`, um
+link temporário assinado (15 min) que o front abre num toque só
+(`window.location.href = url`) pra disparar o download. `404` se
+`:linkPublico` não corresponder a nenhum projeto.
+
+Só entram no ZIP os vídeos **deste** projeto cujo arquivo original está
+disponível no storage (confirmado no R2, não só pelo status do banco). Os
+demais vêm em `skipped`, com `reason`:
+
+| `reason` | Significado |
+| --- | --- |
+| `not_found` | O link não existe ou é de outro projeto |
+| `processing` | Arquivo ainda indisponível e o vídeo está em processamento |
+| `unavailable` | Arquivo original inacessível no storage |
+
+> Um vídeo com `statusProcessamento: "processando"` **entra** no ZIP se o
+> original já estiver no storage: o processamento gera thumbnail e versão
+> otimizada, e o original é enviado antes disso. `processing` aparece só
+> quando o arquivo realmente não está lá.
+
+Quando nenhum dos vídeos pedidos está disponível, a resposta vem com
+`"url": null`, `totalVideos: 0` e todos os links em `skipped` — o front
+deve checar `url` antes de navegar.
+
+### `GET /public/projects/:linkPublico/download/:token`
+Rate limit próprio: 10/min. Transmite o ZIP (`Content-Type:
+application/zip`, `Content-Disposition: attachment`). `:token` é o que vem
+em `url` na rota acima — não é pra ser montado à mão. `404` se o token
+estiver expirado, adulterado ou tiver sido emitido pra outro projeto.
+
+O ZIP é transmitido em streaming, sem compressão (vídeo já é um formato
+comprimido) e sem cópia intermediária em disco ou no R2 — por isso não há
+`Content-Length` e o navegador mostra o download sem porcentagem. Dentro do
+ZIP cada arquivo usa o título do vídeo (`nomeArquivo`) com a extensão do
+original; títulos repetidos ganham sufixo (`Reels (2).mp4`).
+
 ### Portfólio público
 
 ### `GET /public/portfolios/:linkPublico`
