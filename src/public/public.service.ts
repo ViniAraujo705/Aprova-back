@@ -365,6 +365,16 @@ export class PublicService {
 
     return {
       id: video.id,
+      // Link canonico da versao entregue. Quando o cliente abre o link de
+      // uma versao antiga, este NAO e o link da URL acessada - e o da ultima
+      // versao, que e a que esta sendo reproduzida.
+      linkPublico: video.linkPublico,
+      // Auditoria da resolucao de versao (ver resolveVideo): `versao` /
+      // `latestVersionId` sao sempre os da versao entregue;
+      // `resolvedFromVersion` e a versao do link que o cliente acessou.
+      // Iguais quando o link ja era o da ultima versao.
+      latestVersionId: video.id,
+      resolvedFromVersion: video.resolvedFromVersion,
       nomeArquivo: video.nomeArquivo,
       urlStorage: video.urlStorage,
       // Versao otimizada para streaming (null enquanto processa); o
@@ -619,14 +629,82 @@ export class PublicService {
   }
 
   /**
-   * Resolve o video pelo link_publico ou lanca 404.
-   * Seleciona apenas campos publicos - nunca expoe project_id/user.
+   * Profundidade maxima percorrida na cadeia de versoes. Guarda contra
+   * cadeia corrompida (ciclo em video_pai_id, possivel em teoria porque o
+   * banco nao impede) - sem isso o CTE recursivo nao terminaria.
+   */
+  private static readonly MAX_VERSION_DEPTH = 50;
+
+  /**
+   * Resolve o video ENTREGUE por um link_publico: nao o video do proprio
+   * link, e sim a ULTIMA versao da cadeia (video_pai_id) que comeca nele.
+   *
+   * O link publico e enviado ao cliente uma unica vez; quando o editor sobe
+   * uma correcao (POST /videos/:id/new-version) nasce um video filho com
+   * link novo, e o link que o cliente ja tem em maos ficaria preso na versao
+   * antiga. Resolver a cadeia aqui faz qualquer link da familia (o original
+   * inclusive) abrir sempre a versao atual, sem reenviar link a cada ajuste.
+   *
+   * Vale para TODAS as acoes do canal publico (comentario, rating, aprovacao,
+   * titulo), nao so a leitura: o cliente comenta/aprova o que esta vendo.
+   * Comentarios e avaliacoes das versoes anteriores continuam presos aos
+   * respectivos videos - o historico e preservado, so a tela publica anda.
    */
   private async resolveVideo(linkPublico: string) {
-    const video = await this.prisma.video.findUnique({
-      where: { linkPublico },
+    const { requestedVersao, latestId } =
+      await this.resolveVersionChain(linkPublico);
+    const video = await this.loadPublicVideo(latestId);
+    if (!video) {
+      throw new NotFoundException('Video nao encontrado');
+    }
+    return { ...video, resolvedFromVersion: requestedVersao };
+  }
+
+  /**
+   * Desce a cadeia de versoes a partir do video do link (CTE recursivo, uma
+   * unica query - a alternativa seria um SELECT por nivel). Empate teorico
+   * (dois filhos do mesmo pai, se duas novas versoes forem criadas a partir
+   * do mesmo video) e desempatado de forma deterministica pela maior versao,
+   * depois pela mais recente.
+   */
+  private async resolveVersionChain(linkPublico: string) {
+    const rows = await this.prisma.$queryRaw<
+      { id: string; versao: number; depth: number }[]
+    >`
+      WITH RECURSIVE chain AS (
+        SELECT v.id, v.versao, v.criado_em, 0 AS depth
+        FROM videos v
+        WHERE v.link_publico = ${linkPublico}
+        UNION ALL
+        SELECT f.id, f.versao, f.criado_em, c.depth + 1
+        FROM videos f
+        JOIN chain c ON f.video_pai_id = c.id
+        WHERE c.depth < ${PublicService.MAX_VERSION_DEPTH}
+      )
+      SELECT id, versao, depth FROM chain
+      ORDER BY versao DESC, depth DESC, criado_em DESC, id DESC
+    `;
+    if (rows.length === 0) {
+      throw new NotFoundException('Video nao encontrado');
+    }
+    // depth 0 e sempre o video do link acessado; a primeira linha (ordenacao
+    // acima) e a ultima versao da cadeia.
+    const requested = rows.find((row) => row.depth === 0) ?? rows[0];
+    return { requestedVersao: requested.versao, latestId: rows[0].id };
+  }
+
+  /**
+   * Carrega os campos publicos do video ja resolvido.
+   * Seleciona apenas campos publicos - nunca expoe project_id/user.
+   */
+  private async loadPublicVideo(id: string) {
+    return this.prisma.video.findUnique({
+      where: { id },
       select: {
         id: true,
+        // Link canonico da versao entregue - pode ser diferente do link que
+        // o cliente acessou (ver resolveVideo).
+        linkPublico: true,
         nomeArquivo: true,
         urlStorage: true,
         thumbnailUrl: true,
@@ -668,9 +746,5 @@ export class PublicService {
         },
       },
     });
-    if (!video) {
-      throw new NotFoundException('Video nao encontrado');
-    }
-    return video;
   }
 }
