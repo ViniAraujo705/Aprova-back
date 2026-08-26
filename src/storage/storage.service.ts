@@ -33,6 +33,10 @@ export class StorageService {
   private readonly bucket: string;
   private readonly publicUrl: string;
   private readonly urlExpiresIn = 60 * 10; // 10 minutos
+  // Download do cliente final: a expiracao vale para o INICIO da request, o
+  // download em si pode passar disso. 15 min dao folga para o cliente tocar
+  // no botao, a conexao do celular oscilar e o Safari retomar.
+  private readonly downloadExpiresIn = 60 * 15;
 
   constructor(private readonly config: ConfigService) {
     this.bucket = this.config.get<string>('R2_BUCKET_NAME') as string;
@@ -109,6 +113,41 @@ export class StorageService {
       publicUrl: `${this.publicUrl}/${key}`,
       expiresIn: this.urlExpiresIn,
     };
+  }
+
+  /**
+   * Gera uma URL assinada de leitura (GET) que forca o navegador a SALVAR o
+   * arquivo em vez de abrir inline, e com o Content-Type correto.
+   *
+   * Existe porque a URL publica do bucket depende de dois detalhes fora do
+   * nosso controle: o Content-Type que o dispositivo declarou no upload
+   * direto (um iPhone pode subir .MOV como application/octet-stream) e o
+   * CORS do bucket - sem ele o front nao consegue transformar a resposta em
+   * blob para forcar o download. Aqui os dois cabecalhos vem assinados na
+   * propria URL, entao o link pode ser aberto direto (window.location /
+   * <a href>), sem fetch e sem CORS, que e o unico caminho confiavel no
+   * Safari do iPhone.
+   */
+  async createPresignedDownload(
+    key: string,
+    fileName: string,
+    contentType?: string,
+  ): Promise<{ url: string; expiresIn: number }> {
+    // Nome ASCII no filename= (compatibilidade) + filename*= em UTF-8 para
+    // preservar acentos nos navegadores que suportam (RFC 5987).
+    const asciiName =
+      fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_') || 'video';
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ResponseContentDisposition: `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      ...(contentType ? { ResponseContentType: contentType } : {}),
+    });
+
+    const url = await getSignedUrl(this.client, command, {
+      expiresIn: this.downloadExpiresIn,
+    });
+    return { url, expiresIn: this.downloadExpiresIn };
   }
 
   /**
@@ -219,7 +258,15 @@ export class StorageService {
     return null;
   }
 
-  private buildKey(fileName: string, folder = 'videos'): string {
+  /**
+   * Key de um objeto no bucket: sanitiza o nome (o titulo do video e texto
+   * livre digitado pela agencia - espaco e acento na key viram URL que
+   * consumidor nenhum alem do navegador normaliza) e prefixa com timestamp +
+   * bytes aleatorios, de modo que cada upload produza uma key nova. E isso
+   * que autoriza o `CacheControl: immutable` de `uploadFile`: um
+   * reprocessamento nunca sobrescreve um objeto ja distribuido no CDN.
+   */
+  buildKey(fileName: string, folder = 'videos'): string {
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     const unique = `${Date.now()}-${randomBytes(8).toString('hex')}`;
     return `${folder}/${unique}-${safeName}`;

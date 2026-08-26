@@ -1777,6 +1777,43 @@ Resposta:
   dados internos da agência) — equivalente ao item de `videos` da galeria
   do projeto, mas sem `statusProcessamento`/`versao`.
 
+### `GET /public/videos/:linkPublico/download`
+Rate limit: **20/min**.
+
+Query: `tipo=original` (padrão) ou `tipo=otimizado`.
+
+Resposta:
+```json
+{
+  "url": "https://<bucket>.<account>.r2.cloudflarestorage.com/videos/...?X-Amz-Signature=...",
+  "filename": "IMG_9806.MOV",
+  "tipo": "original",
+  "statusProcessamento": "pronto",
+  "expiresIn": 900
+}
+```
+
+Link temporário para **baixar** o vídeo. A URL já vem assinada com
+`Content-Disposition: attachment` e o `Content-Type` correto para a
+extensão (`.MOV` → `video/quicktime`, `.mp4` → `video/mp4`), então o front
+deve **abrir o link direto** (`window.location.href = url` ou um
+`<a href={url}>`) — **sem `fetch`, sem converter em blob**. Esse é o único
+caminho que funciona no Safari do iPhone e o único que não depende do CORS
+do bucket: a resposta nunca é lida por JavaScript.
+
+- `tipo=otimizado` **cai de volta no original** enquanto `urlOtimizada`
+  ainda é `null` (processamento não terminou ou falhou) — o botão nunca
+  fica sem resposta. O campo `tipo` da resposta diz qual arquivo foi
+  realmente entregue, e `statusProcessamento` explica o porquê.
+- `expiresIn` (segundos) vale para o **início** do download; um download
+  já em andamento não é interrompido quando a URL expira.
+- `expiresIn: null` quando o vídeo está hospedado fora do nosso bucket
+  (o vídeo de exemplo do onboarding) — nesse caso `url` é a URL pública
+  original, sem `Content-Disposition`.
+- Resolve a cadeia de versões como as demais rotas públicas: sempre baixa
+  a **última versão**.
+- `404` se `:linkPublico` não existir.
+
 ### `POST /public/videos/:linkPublico/comments/audio-upload-url`
 Rate limit: **20/min**.
 

@@ -1,4 +1,3 @@
-import { extname } from 'path';
 import { once } from 'events';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ProcessamentoStatus } from '@prisma/client';
@@ -7,6 +6,7 @@ import archiver from 'archiver';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { slugify } from '../common/short-id.util';
+import { downloadFileName } from '../common/download-file.util';
 import { DownloadVideosDto } from './dto/download-videos.dto';
 import { signDownloadToken, verifyDownloadToken } from './download-token.util';
 
@@ -290,26 +290,16 @@ export class ProjectDownloadService {
     key: string,
     usedNames: Set<string>,
   ): string {
-    const ext = extname(key) || extname(nomeArquivo) || '.mp4';
-    let base =
-      nomeArquivo.replace(RESERVED_FILENAME_CHARS, '-').trim() || 'video';
-    if (base.toLowerCase().endsWith(ext.toLowerCase())) {
-      base = base.slice(0, -ext.length);
-    }
+    const name = downloadFileName(nomeArquivo, key);
+    const ext = name.slice(name.lastIndexOf('.'));
+    const base = name.slice(0, name.length - ext.length);
 
-    let name = `${base}${ext}`;
+    let unique = name;
     let suffix = 2;
-    while (usedNames.has(name.toLowerCase())) {
-      name = `${base} (${suffix++})${ext}`;
+    while (usedNames.has(unique.toLowerCase())) {
+      unique = `${base} (${suffix++})${ext}`;
     }
-    usedNames.add(name.toLowerCase());
-    return name;
+    usedNames.add(unique.toLowerCase());
+    return unique;
   }
 }
-
-/**
- * Separadores de diretorio e caracteres proibidos em nome de arquivo no
- * Windows/macOS, mais os de controle - o titulo do video e texto livre
- * digitado pela agencia e vira nome de arquivo dentro do zip.
- */
-const RESERVED_FILENAME_CHARS = /[\p{C}/\\:*?"<>|]/gu;
