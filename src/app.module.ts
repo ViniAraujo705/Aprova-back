@@ -36,6 +36,7 @@ import { ClientActivityModule } from './client-activity/client-activity.module';
 import { ClientFilesModule } from './client-files/client-files.module';
 import { LabelsModule } from './labels/labels.module';
 import { ClientFieldsModule } from './client-fields/client-fields.module';
+import { CheckDayNotesModule } from './checkday/checkday-notes.module';
 import { bullmqConnectionFactory } from './queue/bullmq-connection';
 
 @Module({
@@ -96,6 +97,7 @@ import { bullmqConnectionFactory } from './queue/bullmq-connection';
     ClientFilesModule,
     ClientFieldsModule,
     LabelsModule,
+    CheckDayNotesModule,
   ],
   providers: [
     {

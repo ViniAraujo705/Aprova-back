@@ -122,6 +122,11 @@ enum ClientFileCategoria {
   outro
 }
 
+enum CheckDayNoteVisibilidade {
+  equipe
+  privada
+}
+
 // Cores disponiveis para as labels internas do Kanban. O frontend usa estes
 // identificadores para aplicar sua propria paleta visual.
 enum LabelColor {
@@ -177,6 +182,7 @@ model Account {
   demandas            Demanda[]
   clientActivities    ClientActivity[]
   clientFiles         ClientFile[]
+  checkDayNotes       CheckDayNote[]
   labels              Label[]
 
   clientFields        ClientField[]
@@ -235,6 +241,7 @@ model User {
   recordingEventGoogleSyncs RecordingEventGoogleSync[]
   // Arquivos operacionais do cliente enviados por este usuario (ver ClientFile)
   clientFilesEnviados     ClientFile[]
+  checkDayNotesAutor      CheckDayNote[]
   driveItemsVinculados      ProjectGoogleDriveItem[]
   videoCollaborations     VideoCollaborator[]
   demandaCollaborations   DemandaCollaborator[]
@@ -603,6 +610,26 @@ model ClientFile {
   @@index([clienteId])
   @@index([accountId])
   @@map("client_files")
+}
+
+model CheckDayNote {
+  id           String                    @id @default(uuid())
+  accountId    String                    @map("account_id")
+  authorId     String                    @map("author_id")
+  title        String
+  body         String?
+  items        Json                      @default("[]")
+  imageUrl     String?                   @map("image_url")
+  visibilidade CheckDayNoteVisibilidade @default(equipe)
+  createdAt    DateTime                  @default(now()) @map("created_at")
+  updatedAt    DateTime                  @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([accountId, updatedAt])
+  @@index([accountId, authorId])
+  @@map("checkday_notes")
 }
 
 model Project {
