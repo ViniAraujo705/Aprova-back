@@ -76,6 +76,7 @@ export class PublicService {
             status: true,
             statusProcessamento: true,
             versao: true,
+            criadoEm: true,
           },
         },
       },
@@ -98,7 +99,10 @@ export class PublicService {
         logoUrl: project.account.memberships[0]?.user.logoUrl ?? null,
         corDestaque: project.account.memberships[0]?.user.corDestaque ?? null,
       },
-      videos: project.videos.map((v) => ({
+      // Uma cadeia de versões representa uma única entrega para o cliente.
+      // A galeria pública mostra só a ponta atual de cada cadeia; as linhas
+      // substituídas seguem disponíveis exclusivamente no histórico interno.
+      videos: this.latestProjectVideos(project.videos).map((v) => ({
         id: v.id,
         videoPaiId: v.videoPaiId,
         link: v.linkPublico,
@@ -693,6 +697,57 @@ export class PublicService {
     return client.logoUrl || client.corDestaque
       ? { logoUrl: client.logoUrl, corDestaque: client.corDestaque }
       : null;
+  }
+
+  /**
+   * Retorna uma única versão atual por cadeia do projeto. Em caso de dois
+   * filhos criados em paralelo, usa a maior versão e, em seguida, a criação
+   * mais recente como desempate determinístico.
+   */
+  private latestProjectVideos<
+    T extends {
+      id: string;
+      videoPaiId: string | null;
+      versao: number;
+      criadoEm: Date;
+    },
+  >(videos: T[]): T[] {
+    const byId = new Map(videos.map((video) => [video.id, video]));
+    const rootById = new Map<string, string>();
+
+    const rootOf = (video: T): string => {
+      const cached = rootById.get(video.id);
+      if (cached) return cached;
+
+      const visited = new Set<string>();
+      let current = video;
+      while (current.videoPaiId && !visited.has(current.id)) {
+        visited.add(current.id);
+        const parent = byId.get(current.videoPaiId);
+        if (!parent) break;
+        current = parent;
+      }
+      rootById.set(video.id, current.id);
+      return current.id;
+    };
+
+    const latestByRoot = new Map<string, T>();
+    for (const video of videos) {
+      const rootId = rootOf(video);
+      const current = latestByRoot.get(rootId);
+      if (
+        !current ||
+        video.versao > current.versao ||
+        (video.versao === current.versao && video.criadoEm > current.criadoEm)
+      ) {
+        latestByRoot.set(rootId, video);
+      }
+    }
+
+    const latestIds = new Set(
+      [...latestByRoot.values()].map((video) => video.id),
+    );
+    return videos.filter((video) => latestIds.has(video.id));
   }
 
   /**

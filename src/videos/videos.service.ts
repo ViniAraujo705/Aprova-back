@@ -207,7 +207,13 @@ export class VideosService {
       descricao: video.nomeArquivo,
     });
 
-    return toVideoDto(video);
+    return {
+      ...toVideoDto(video),
+      // O registro novo ganha seu próprio link, mas o link que já foi
+      // compartilhado com o cliente é o da raiz da cadeia e permanece
+      // estável. GET /public/videos/:linkPublico o resolve para esta versão.
+      linkPublicoEfetivo: await this.resolveStablePublicLink(pai),
+    };
   }
 
   /**
@@ -498,6 +504,30 @@ export class VideosService {
     }
     await assertProjectAccess(this.prisma, video.projectId, user);
     return video;
+  }
+
+  /** Link da primeira versão da cadeia, que é o endereço estável do cliente. */
+  private async resolveStablePublicLink(video: {
+    projectId: string;
+    linkPublico: string;
+    videoPaiId: string | null;
+  }): Promise<string> {
+    let current = video;
+    const visited = new Set<string>();
+
+    while (current.videoPaiId && !visited.has(current.videoPaiId)) {
+      visited.add(current.videoPaiId);
+      const parent = await this.prisma.video.findUnique({
+        where: { id: current.videoPaiId },
+        select: { projectId: true, linkPublico: true, videoPaiId: true },
+      });
+      // Uma cadeia consistente nunca cruza projetos. Se encontrar um dado
+      // corrompido, não expõe o link de outro projeto: conserva o atual.
+      if (!parent || parent.projectId !== current.projectId) break;
+      current = parent;
+    }
+
+    return current.linkPublico;
   }
 
   /** Confirma que labels e membros informativos pertencem a esta agencia. */
