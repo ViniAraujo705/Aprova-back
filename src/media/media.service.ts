@@ -55,8 +55,9 @@ export class MediaService {
 
   /**
    * Gera uma versão comprimida/otimizada para streaming web:
-   * H.264 + AAC, limitada a 720p de altura, com moov atom no início
-   * (+faststart) para começar a tocar antes do download completo.
+   * H.264 High + AAC, limitada a 1080px no lado MENOR (sem upscale). Assim
+   * um vídeo vertical 4K vira 1080x1920, e não 406x720; o moov atom fica no
+   * início (+faststart) para começar a tocar antes do download completo.
    */
   optimizeForWeb(inputPath: string, outputPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -64,11 +65,14 @@ export class MediaService {
         .videoCodec('libx264')
         .audioCodec('aac')
         .outputOptions([
-          '-preset veryfast',
-          '-crf 26',
+          '-preset medium',
+          '-crf 20',
+          '-profile:v high',
+          '-b:a 192k',
           '-movflags +faststart',
-          // Reduz para no máximo 720p de altura, mantendo proporção e dimensões pares
-          '-vf scale=-2:min(720\\,ih)',
+          // Limita a menor dimensão a 1080px, sem ampliar fontes menores.
+          // -2 preserva a proporção e força a dimensão calculada a ser par.
+          '-vf scale=if(gt(iw\\,ih)\\,-2\\,min(1080\\,ih)):if(gt(iw\\,ih)\\,min(1080\\,iw)\\,-2)',
           '-pix_fmt yuv420p',
         ])
         .format('mp4')

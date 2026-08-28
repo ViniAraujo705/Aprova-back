@@ -1,8 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   ProcessamentoStatus,
   UserRole,
@@ -207,24 +203,17 @@ export class AdminService {
   }
 
   /**
-   * Reenfileira o processamento (thumbnail + versao otimizada) de um video
-   * travado em statusProcessamento = erro. Nao ha retry automatico apos os
-   * 3 attempts do BullMQ se esgotarem, entao esse e o unico jeito de tentar
-   * de novo sem o dono reenviar o arquivo.
+   * Reenfileira o processamento (thumbnail + versao otimizada) de qualquer
+   * video. Isso permite regenerar entregas ja prontas quando o perfil de
+   * transcode melhora, sem pedir novo upload ao cliente.
    */
   async reprocessVideo(id: string) {
     const video = await this.prisma.video.findUnique({
       where: { id },
-      select: { id: true, statusProcessamento: true },
+      select: { id: true },
     });
     if (!video) {
       throw new NotFoundException('Video nao encontrado');
-    }
-    if (video.statusProcessamento !== ProcessamentoStatus.erro) {
-      throw new ConflictException(
-        'Video nao esta em erro de processamento (statusProcessamento atual: ' +
-          `${video.statusProcessamento})`,
-      );
     }
 
     await this.prisma.video.update({

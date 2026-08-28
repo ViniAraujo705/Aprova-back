@@ -71,7 +71,7 @@ export class AdminController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Reenfileira thumbnail + versao otimizada para um video travado em statusProcessamento=erro. 409 se o video nao estiver em erro.',
+      'Reenfileira thumbnail + versao otimizada de qualquer video, inclusive um ja pronto, sem exigir novo upload.',
   })
   reprocessVideo(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.adminService.reprocessVideo(id);
