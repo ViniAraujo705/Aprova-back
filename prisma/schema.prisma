@@ -229,6 +229,8 @@ model User {
   clientesResponsavel       Client[]
   // CrewMember(s) vinculados a esta conta (ver CrewMember.userId)
   crewMemberLinks         CrewMember[]
+  googleDriveConnection   GoogleDriveConnection?
+  driveItemsVinculados    ProjectGoogleDriveItem[]
   // Arquivos operacionais do cliente enviados por este usuario (ver ClientFile)
   clientFilesEnviados     ClientFile[]
   videoCollaborations     VideoCollaborator[]
@@ -357,6 +359,43 @@ model RecordingEvent {
   @@index([membroId])
   @@index([demandaId])
   @@map("recording_events")
+}
+
+// Conexao OAuth pessoal com o Google Drive. O refresh token e criptografado
+// antes de persistir; a integracao so consulta metadados dos itens.
+model GoogleDriveConnection {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  googleEmail     String?  @map("google_email")
+  refreshTokenEnc String   @map("refresh_token_enc")
+  criadoEm        DateTime @default(now()) @map("criado_em")
+  atualizadoEm    DateTime @updatedAt @map("atualizado_em")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("google_drive_connections")
+}
+
+// Vinculo de uma pasta ou arquivo existente no Drive a um projeto. O conteudo
+// nao e copiado para o Aprova nem tem suas permissoes alteradas.
+model ProjectGoogleDriveItem {
+  id             String   @id @default(uuid())
+  projectId      String   @map("project_id")
+  linkedByUserId String?  @map("linked_by_user_id")
+  googleFileId   String   @map("google_file_id")
+  nome           String
+  mimeType       String   @map("mime_type")
+  isFolder       Boolean  @default(false) @map("is_folder")
+  webViewLink    String?  @map("web_view_link")
+  criadoEm       DateTime @default(now()) @map("criado_em")
+  atualizadoEm   DateTime @updatedAt @map("atualizado_em")
+
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  linkedByUser User?   @relation(fields: [linkedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, googleFileId])
+  @@index([linkedByUserId])
+  @@map("project_google_drive_items")
 }
 
 // Pessoa da equipe de gravacao (freelancer, motorista etc.). Normalmente nao
@@ -545,6 +584,7 @@ model Project {
   videos     Video[]
   members    ProjectMember[]
   activities ClientActivity[]
+  googleDriveItems ProjectGoogleDriveItem[]
 
   @@index([clientId])
   @@index([accountId])
