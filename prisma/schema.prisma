@@ -122,6 +122,14 @@ enum ClientFileCategoria {
   outro
 }
 
+// Visibilidade das notas do CheckDay. A primeira versao do produto usa
+// "equipe" para todas; "privada" deixa a persistencia preparada para uma
+// futura filtragem por authorId, sem alterar a estrutura da tabela.
+enum CheckDayNoteVisibilidade {
+  equipe
+  privada
+}
+
 // Cores disponiveis para as labels internas do Kanban. O frontend usa estes
 // identificadores para aplicar sua propria paleta visual.
 enum LabelColor {
@@ -178,8 +186,9 @@ model Account {
   clientActivities    ClientActivity[]
   clientFiles         ClientFile[]
   labels              Label[]
-
   clientFields        ClientField[]
+  checkDayNotes       CheckDayNote[]
+
   @@map("accounts")
 }
 
@@ -212,29 +221,33 @@ model User {
   // EmailVerificationToken para contas via email/senha.
   emailVerificadoEm DateTime?  @map("email_verificado_em")
 
-  memberships             Membership[]
-  comments                Comment[]
+  memberships               Membership[]
+  comments                  Comment[]
   // Videos em que este usuario (owner ou editor) e uma das pessoas responsaveis.
-  videosResponsavel       VideoResponsavel[]
-  passwordResetTokens     PasswordResetToken[]
-  emailVerificationTokens EmailVerificationToken[]
-  notifications           Notification[]
-  sessions                Session[]
-  recordingEvents         RecordingEvent[]
+  videosResponsavel         VideoResponsavel[]
+  passwordResetTokens       PasswordResetToken[]
+  emailVerificationTokens   EmailVerificationToken[]
+  notifications             Notification[]
+  sessions                  Session[]
+  recordingEvents           RecordingEvent[]
   // Projetos aos quais este usuario (editor) foi atribuido
-  projectMemberships      ProjectMember[]
+  projectMemberships        ProjectMember[]
   // Demandas (cards do board Kanban) atribuidas a este usuario
-  demandasResponsavel     Demanda[]
+  demandasResponsavel       Demanda[]
   // Clientes pelos quais este usuario e o responsavel designado
   clientesResponsavel       Client[]
   // CrewMember(s) vinculados a esta conta (ver CrewMember.userId)
-  crewMemberLinks         CrewMember[]
-  googleDriveConnection   GoogleDriveConnection?
-  driveItemsVinculados    ProjectGoogleDriveItem[]
+  crewMemberLinks           CrewMember[]
+  // Google Calendar pessoal conectado por este usuario (ver GoogleCalendarConnection)
+  googleCalendarConnection  GoogleCalendarConnection?
+  googleDriveConnection     GoogleDriveConnection?
+  recordingEventGoogleSyncs RecordingEventGoogleSync[]
   // Arquivos operacionais do cliente enviados por este usuario (ver ClientFile)
-  clientFilesEnviados     ClientFile[]
-  videoCollaborations     VideoCollaborator[]
-  demandaCollaborations   DemandaCollaborator[]
+  clientFilesEnviados       ClientFile[]
+  checkDayNotesAutor        CheckDayNote[]
+  driveItemsVinculados      ProjectGoogleDriveItem[]
+  videoCollaborations       VideoCollaborator[]
+  demandaCollaborations     DemandaCollaborator[]
 
   @@map("users")
 }
@@ -347,18 +360,37 @@ model RecordingEvent {
   observacoes String?
   criadoEm    DateTime  @default(now()) @map("criado_em")
 
-  account       Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  cliente       Client?              @relation(fields: [clienteId], references: [id], onDelete: SetNull)
-  membro        User?                @relation(fields: [membroId], references: [id], onDelete: SetNull)
-  demanda       Demanda?             @relation(fields: [demandaId], references: [id], onDelete: SetNull)
+  account       Account                    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cliente       Client?                    @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  membro        User?                      @relation(fields: [membroId], references: [id], onDelete: SetNull)
+  demanda       Demanda?                   @relation(fields: [demandaId], references: [id], onDelete: SetNull)
   notifications Notification[]
   equipe        RecordingEventCrew[]
+  googleSyncs   RecordingEventGoogleSync[]
 
   @@index([accountId])
   @@index([clienteId])
   @@index([membroId])
   @@index([demandaId])
   @@map("recording_events")
+}
+
+// Google Calendar pessoal conectado por um usuario (OAuth auth-code, escopo
+// calendar.events) - usado pelo sync unidirecional Aprova -> Google dos
+// RecordingEvent (ver GoogleCalendarSyncService). refreshTokenEnc e
+// criptografado (AES-256-GCM, ver src/common/crypto.util.ts) antes de
+// persistir - e um segredo de verdade, nao um id opaco.
+model GoogleCalendarConnection {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  googleEmail     String?  @map("google_email")
+  refreshTokenEnc String   @map("refresh_token_enc")
+  criadoEm        DateTime @default(now()) @map("criado_em")
+  atualizadoEm    DateTime @updatedAt @map("atualizado_em")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("google_calendar_connections")
 }
 
 // Conexao OAuth pessoal com o Google Drive. O refresh token e criptografado
@@ -396,6 +428,24 @@ model ProjectGoogleDriveItem {
   @@unique([projectId, googleFileId])
   @@index([linkedByUserId])
   @@map("project_google_drive_items")
+}
+
+// Mapeia cada RecordingEvent -> evento criado no Google Calendar de cada
+// destinatario (membro responsavel + equipe com userId vinculado), pra
+// permitir editar/apagar o evento certo em vez de duplicar a cada update.
+model RecordingEventGoogleSync {
+  id               String   @id @default(uuid())
+  recordingEventId String   @map("recording_event_id")
+  userId           String   @map("user_id")
+  googleEventId    String   @map("google_event_id")
+  criadoEm         DateTime @default(now()) @map("criado_em")
+
+  recordingEvent RecordingEvent @relation(fields: [recordingEventId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([recordingEventId, userId])
+  @@index([userId])
+  @@map("recording_event_google_sync")
 }
 
 // Pessoa da equipe de gravacao (freelancer, motorista etc.). Normalmente nao
@@ -454,29 +504,29 @@ model ProjectMember {
 }
 
 model Client {
-  id        String  @id @default(uuid())
-  nome      String
-  email     String?
+  id          String  @id @default(uuid())
+  nome        String
+  email       String?
   // Legenda exibida no modo "Preview Reels" da galeria publica
-  descricao String?
+  descricao   String?
   // Foto do cliente (avatar), exibida no modo "Preview Reels"
-  fotoUrl   String? @map("foto_url")
-  accountId String  @map("account_id")
+  fotoUrl     String? @map("foto_url")
+  accountId   String  @map("account_id")
   // Profissional (owner/editor) da agencia responsavel por este cliente.
   // Null quando ainda nao ha responsavel atribuido.
   responsavelId String? @map("responsavel_id")
   // Marca dados de exemplo criados no onboarding, para o usuario poder deletar
-  isExemplo Boolean @default(false) @map("is_exemplo")
+  isExemplo   Boolean @default(false) @map("is_exemplo")
   // Marca propria do cliente (white-label revendido pela agencia): quando
   // setada, sobrepoe campo a campo o branding da agencia (User.logoUrl/
   // corDestaque) nos links publicos deste cliente - ver ClientsService e
   // PublicService.getProject/getPortfolio.
   logoUrl     String? @map("logo_url")
   corDestaque String? @map("cor_destaque")
-
   // Valores dos campos customizados definidos pela agencia. As chaves sao os
   // IDs de ClientField para que renomear um campo nao altere valores ja salvos.
   camposPersonalizados Json? @map("campos_personalizados")
+
   account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
   responsavel     User?            @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
   projects        Project[]
@@ -492,6 +542,7 @@ model Client {
   @@index([responsavelId])
   @@map("clients")
 }
+
 // Definicao de um campo extra no cadastro de clientes, compartilhada por
 // todos os membros da mesma agencia.
 model ClientField {
@@ -506,7 +557,6 @@ model ClientField {
   @@index([accountId, ordem])
   @@map("client_fields")
 }
-
 
 // Trilha de auditoria append-only do cliente (central do cliente no
 // frontend, GET /clients/:id/activity). Gravada automaticamente pelo
@@ -566,6 +616,28 @@ model ClientFile {
   @@index([clienteId])
   @@index([accountId])
   @@map("client_files")
+}
+
+// Notas e checklists internos do CheckDay. `items` e um array JSON para que
+// uma nota seja atualizada atomica e completamente pelo frontend.
+model CheckDayNote {
+  id           String                    @id @default(uuid())
+  accountId    String                    @map("account_id")
+  authorId     String                    @map("author_id")
+  title        String
+  body         String?
+  items        Json                      @default("[]")
+  imageUrl     String?                   @map("image_url")
+  visibilidade CheckDayNoteVisibilidade @default(equipe)
+  createdAt    DateTime                  @default(now()) @map("created_at")
+  updatedAt    DateTime                  @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([accountId, updatedAt])
+  @@index([accountId, authorId])
+  @@map("checkday_notes")
 }
 
 model Project {
@@ -696,12 +768,12 @@ model Demanda {
 // Labels compartilhadas por todos os membros de uma agencia. Nao pertencem
 // ao usuario que as criou: Account e o unico escopo de isolamento.
 model Label {
-  id           String     @id @default(uuid())
-  accountId    String     @map("account_id")
-  text         String
-  color        LabelColor
-  criadoEm     DateTime   @default(now()) @map("criado_em")
-  atualizadoEm DateTime   @updatedAt @map("atualizado_em")
+  id        String     @id @default(uuid())
+  accountId String     @map("account_id")
+  text      String
+  color     LabelColor
+  criadoEm  DateTime   @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
   account  Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
   videos   VideoLabel[]
@@ -711,6 +783,8 @@ model Label {
   @@map("labels")
 }
 
+// Associacoes explicitas preservam o nome das tabelas e permitem que uma
+// label seja reutilizada tanto em Video quanto em Demanda.
 model VideoLabel {
   videoId String @map("video_id")
   labelId String @map("label_id")

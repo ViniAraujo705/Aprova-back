@@ -30,11 +30,13 @@ import { BillingModule } from './billing/billing.module';
 import { RecordingEventsModule } from './recording-events/recording-events.module';
 import { CrewModule } from './crew/crew.module';
 import { DemandasModule } from './demandas/demandas.module';
+import { GoogleCalendarModule } from './google-calendar/google-calendar.module';
 import { GoogleDriveModule } from './google-drive/google-drive.module';
 import { ClientActivityModule } from './client-activity/client-activity.module';
 import { ClientFilesModule } from './client-files/client-files.module';
 import { LabelsModule } from './labels/labels.module';
 import { ClientFieldsModule } from './client-fields/client-fields.module';
+import { CheckDayNotesModule } from './checkday/checkday-notes.module';
 import { bullmqConnectionFactory } from './queue/bullmq-connection';
 
 @Module({
@@ -89,11 +91,13 @@ import { bullmqConnectionFactory } from './queue/bullmq-connection';
     RecordingEventsModule,
     CrewModule,
     DemandasModule,
+    GoogleCalendarModule,
     GoogleDriveModule,
     ClientActivityModule,
     ClientFilesModule,
-    ClientFieldsModule,
     LabelsModule,
+    ClientFieldsModule,
+    CheckDayNotesModule,
   ],
   providers: [
     {
