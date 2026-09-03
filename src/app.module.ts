@@ -38,6 +38,7 @@ import { LabelsModule } from './labels/labels.module';
 import { ClientFieldsModule } from './client-fields/client-fields.module';
 import { CheckDayNotesModule } from './checkday/checkday-notes.module';
 import { bullmqConnectionFactory } from './queue/bullmq-connection';
+import { RedisThrottlerStorage } from './common/redis-throttler.storage';
 
 @Module({
   imports: [
@@ -52,12 +53,18 @@ import { bullmqConnectionFactory } from './queue/bullmq-connection';
     // ratings) estava esbarrando no limite anterior sem nenhum abuso.
     // Rotas sensiveis (login, reset de senha etc.) tem limites proprios e
     // mais restritivos via @Throttle nos respectivos controllers.
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60_000,
-        limit: 120,
-      },
-    ]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        storage: new RedisThrottlerStorage(config),
+        throttlers: [
+          {
+            ttl: 60_000,
+            limit: 120,
+          },
+        ],
+      }),
+    }),
     // Fila assíncrona (BullMQ + Redis) usada no processamento de vídeo.
     // Este processo (web) so enfileira jobs; quem consome roda em
     // WorkerModule (src/main-worker.ts), processo separado.
