@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -30,6 +32,7 @@ import { ProjectReportService } from '../reports/project-report.service';
 import { PlansService } from '../plans/plans.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { ProjectPhotoUploadUrlDto } from './dto/project-photo-upload-url.dto';
 import { LinkGoogleDriveItemDto } from '../google-drive/dto/link-google-drive-item.dto';
 import { GoogleDriveService } from '../google-drive/google-drive.service';
 
@@ -98,6 +101,25 @@ export class ProjectsController {
   @Delete(':id')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.projectsService.remove(user.accountId, id, user);
+  }
+
+  @Post(':id/photo-upload-url')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Gera uma presigned URL para o upload da miniatura do projeto (R2). O frontend faz PUT direto na uploadUrl e depois manda a publicUrl num PATCH /projects/:id { fotoUrl } - nao ha passo de confirmacao.',
+  })
+  createPhotoUploadUrl(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: ProjectPhotoUploadUrlDto,
+  ) {
+    return this.projectsService.createPhotoUploadUrl(
+      user.accountId,
+      id,
+      dto,
+      user,
+    );
   }
 
   @Post(':id/members/:memberId')

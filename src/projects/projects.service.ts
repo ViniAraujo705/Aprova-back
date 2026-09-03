@@ -8,8 +8,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { createWithUniqueLinkPublico } from '../common/short-id.util';
 import { assertProjectAccess } from '../common/project-access.util';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
+import { StorageService } from '../storage/storage.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { ProjectPhotoUploadUrlDto } from './dto/project-photo-upload-url.dto';
 
 const MEMBER_SELECT = {
   id: true,
@@ -19,7 +21,10 @@ const MEMBER_SELECT = {
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   async create(accountId: string, dto: CreateProjectDto, user: AuthUser) {
     await this.assertClientOwnership(accountId, dto.clientId);
@@ -28,6 +33,7 @@ export class ProjectsService {
         data: {
           nome: dto.nome,
           clientId: dto.clientId,
+          fotoUrl: dto.fotoUrl ?? null,
           accountId,
           linkPublico,
           // Um editor só acessa projetos nos quais consta em ProjectMember.
@@ -135,6 +141,27 @@ export class ProjectsService {
       where: { projectId },
       select: MEMBER_SELECT,
     });
+  }
+
+  /**
+   * Presigned URL para a miniatura do projeto (mesmo contrato de 2 passos do
+   * upload de foto do cliente: PUT direto no R2 e depois
+   * PATCH /projects/:id { fotoUrl: publicUrl }). Diferente da rota do
+   * cliente, aqui o :id e conferido de verdade - passa pelo findOne, entao
+   * um editor so gera URL para projeto ao qual foi atribuido.
+   */
+  async createPhotoUploadUrl(
+    accountId: string,
+    id: string,
+    dto: ProjectPhotoUploadUrlDto,
+    user: AuthUser,
+  ) {
+    await this.findOne(accountId, id, user);
+    return this.storage.createPresignedUploadIn(
+      'projects',
+      dto.nomeArquivo,
+      dto.contentType,
+    );
   }
 
   private async assertProjectInAccount(accountId: string, projectId: string) {
