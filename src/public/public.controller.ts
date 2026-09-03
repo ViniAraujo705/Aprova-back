@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -16,6 +17,7 @@ import { CreateRatingDto } from './dto/create-rating.dto';
 import { ApproveVideoDto } from './dto/approve-video.dto';
 import { AudioUploadUrlDto } from './dto/audio-upload-url.dto';
 import { UpdateTituloDto } from './dto/update-titulo.dto';
+import { VideoDownloadQueryDto } from './dto/video-download.dto';
 
 /**
  * Rotas de acesso do cliente - SEM autenticacao.
@@ -35,6 +37,19 @@ export class PublicController {
   })
   getVideo(@Param('linkPublico') linkPublico: string) {
     return this.publicService.getVideo(linkPublico);
+  }
+
+  @Get(':linkPublico/download')
+  @ApiOperation({
+    summary:
+      'URL temporária para baixar o vídeo (Content-Disposition: attachment + Content-Type correto). tipo=original (padrão) ou tipo=otimizado, que cai no original enquanto o processamento não terminou.',
+  })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  getDownload(
+    @Param('linkPublico') linkPublico: string,
+    @Query() query: VideoDownloadQueryDto,
+  ) {
+    return this.publicService.getVideoDownload(linkPublico, query.tipo);
   }
 
   @Post(':linkPublico/comments/audio-upload-url')

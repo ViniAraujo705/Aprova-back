@@ -1522,6 +1522,67 @@ faz o merge campo a campo: `cliente.branding.logoUrl ?? agencia.logoUrl`,
 `cliente.branding.corDestaque ?? agencia.corDestaque` (a marca do cliente
 pode setar só o logo, só a cor, ou os dois).
 
+### `POST /public/projects/:linkPublico/download`
+Rate limit próprio: 20/min. Download **em lote** da entrega: monta um único
+ZIP com os vídeos selecionados da galeria. Existe porque o Safari do iPhone
+bloqueia vários downloads disparados a partir de um único toque — baixar
+vídeo por vídeo não funciona no celular.
+
+Corpo:
+```json
+{ "videoLinks": ["link-publico-1", "link-publico-2"] }
+```
+`videoLinks` são os `link` de `GET /public/projects/:linkPublico` (o
+`linkPublico` de cada vídeo), no máximo **50** por request. Links repetidos
+são ignorados; a ordem enviada é a ordem dos arquivos dentro do ZIP.
+
+Resposta:
+```json
+{
+  "url": "https://api.../api/public/projects/abc123/download/eJyr...VGRk",
+  "filename": "entrega-campanha-verao.zip",
+  "totalVideos": 2,
+  "totalBytes": 734003200,
+  "expiresIn": 900,
+  "skipped": [{ "link": "link-publico-3", "reason": "processing" }]
+}
+```
+Esta rota **não** devolve o ZIP: ela valida a seleção e devolve `url`, um
+link temporário assinado (15 min) que o front abre num toque só
+(`window.location.href = url`) pra disparar o download. `404` se
+`:linkPublico` não corresponder a nenhum projeto.
+
+Só entram no ZIP os vídeos **deste** projeto cujo arquivo original está
+disponível no storage (confirmado no R2, não só pelo status do banco). Os
+demais vêm em `skipped`, com `reason`:
+
+| `reason` | Significado |
+| --- | --- |
+| `not_found` | O link não existe ou é de outro projeto |
+| `processing` | Arquivo ainda indisponível e o vídeo está em processamento |
+| `unavailable` | Arquivo original inacessível no storage |
+
+> Um vídeo com `statusProcessamento: "processando"` **entra** no ZIP se o
+> original já estiver no storage: o processamento gera thumbnail e versão
+> otimizada, e o original é enviado antes disso. `processing` aparece só
+> quando o arquivo realmente não está lá.
+
+Quando nenhum dos vídeos pedidos está disponível, a resposta vem com
+`"url": null`, `totalVideos: 0` e todos os links em `skipped` — o front
+deve checar `url` antes de navegar.
+
+### `GET /public/projects/:linkPublico/download/:token`
+Rate limit próprio: 10/min. Transmite o ZIP (`Content-Type:
+application/zip`, `Content-Disposition: attachment`). `:token` é o que vem
+em `url` na rota acima — não é pra ser montado à mão. `404` se o token
+estiver expirado, adulterado ou tiver sido emitido pra outro projeto.
+
+O ZIP é transmitido em streaming, sem compressão (vídeo já é um formato
+comprimido) e sem cópia intermediária em disco ou no R2 — por isso não há
+`Content-Length` e o navegador mostra o download sem porcentagem. Dentro do
+ZIP cada arquivo usa o título do vídeo (`nomeArquivo`) com a extensão do
+original; títulos repetidos ganham sufixo (`Reels (2).mp4`).
+
 ### Portfólio público
 
 ### `GET /public/portfolios/:linkPublico`
@@ -1657,11 +1718,51 @@ Resposta:
   misturar entregas antigas de outros projetos do mesmo cliente),
   **incluindo o vídeo atual**, ordenados por data de criação (crescente,
   estável entre chamadas). O frontend localiza a posição atual com
-  `queue.findIndex(item => item.link === linkPublicoAtual)` para navegar
-  prev/next — sempre vai existir um match porque o vídeo atual está na
-  lista. Cada item tem só `link`, `title`, `posterUrl`, `status` (nada de
+  `queue.findIndex(item => item.link === linkPublico)` (o `linkPublico` da
+  resposta, **não** o da URL acessada — se o cliente entrou por um link de
+  versão antiga, os dois são diferentes) para navegar prev/next — sempre vai
+  existir um match porque o vídeo atual está na lista. A fila ainda inclui
+  versões antigas como itens separados; cada uma delas abre a última versão
+  da respectiva cadeia. Cada item tem só `link`, `title`, `posterUrl`, `status` (nada de
   dados internos da agência) — equivalente ao item de `videos` da galeria
   do projeto, mas sem `statusProcessamento`/`versao`.
+
+### `GET /public/videos/:linkPublico/download`
+Rate limit: **20/min**.
+
+Query: `tipo=original` (padrão) ou `tipo=otimizado`.
+
+Resposta:
+```json
+{
+  "url": "https://<bucket>.<account>.r2.cloudflarestorage.com/videos/...?X-Amz-Signature=...",
+  "filename": "IMG_9806.MOV",
+  "tipo": "original",
+  "statusProcessamento": "pronto",
+  "expiresIn": 900
+}
+```
+
+Link temporário para **baixar** o vídeo. A URL já vem assinada com
+`Content-Disposition: attachment` e o `Content-Type` correto para a
+extensão (`.MOV` → `video/quicktime`, `.mp4` → `video/mp4`), então o front
+deve **abrir o link direto** (`window.location.href = url` ou um
+`<a href={url}>`) — **sem `fetch`, sem converter em blob**. Esse é o único
+caminho que funciona no Safari do iPhone e o único que não depende do CORS
+do bucket: a resposta nunca é lida por JavaScript.
+
+- `tipo=otimizado` **cai de volta no original** enquanto `urlOtimizada`
+  ainda é `null` (processamento não terminou ou falhou) — o botão nunca
+  fica sem resposta. O campo `tipo` da resposta diz qual arquivo foi
+  realmente entregue, e `statusProcessamento` explica o porquê.
+- `expiresIn` (segundos) vale para o **início** do download; um download
+  já em andamento não é interrompido quando a URL expira.
+- `expiresIn: null` quando o vídeo está hospedado fora do nosso bucket
+  (o vídeo de exemplo do onboarding) — nesse caso `url` é a URL pública
+  original, sem `Content-Disposition`.
+- Resolve a cadeia de versões como as demais rotas públicas: sempre baixa
+  a **última versão**.
+- `404` se `:linkPublico` não existir.
 
 ### `POST /public/videos/:linkPublico/comments/audio-upload-url`
 Rate limit: **20/min**.

@@ -23,6 +23,11 @@ import { CreateRatingDto } from './dto/create-rating.dto';
 import { ApproveVideoDto } from './dto/approve-video.dto';
 import { AudioUploadUrlDto } from './dto/audio-upload-url.dto';
 import { UpdateTituloDto } from './dto/update-titulo.dto';
+import { DownloadTipo } from './dto/video-download.dto';
+import {
+  downloadFileName,
+  videoContentTypeFromKey,
+} from '../common/download-file.util';
 
 @Injectable()
 export class PublicService {
@@ -421,6 +426,68 @@ export class PublicService {
         posterUrl: v.thumbnailUrl,
         status: v.status,
       })),
+    };
+  }
+
+  /**
+   * Link de download de UM video do canal publico (o botao "baixar" da tela
+   * de aprovacao). Devolve uma URL temporaria assinada que ja carrega
+   * Content-Disposition: attachment e o Content-Type certo, de modo que o
+   * front so precisa abrir o link - sem fetch, sem blob e sem depender do
+   * CORS do bucket, que e o unico caminho que funciona no Safari do iPhone.
+   *
+   * `tipo=otimizado` cai de volta no original enquanto o processamento nao
+   * terminou: o botao nunca fica sem resposta, e o campo `tipo` da resposta
+   * diz qual arquivo foi realmente entregue.
+   */
+  async getVideoDownload(linkPublico: string, tipo: DownloadTipo = 'original') {
+    const { latestId } = await this.resolveVersionChain(linkPublico);
+    const video = await this.prisma.video.findUnique({
+      where: { id: latestId },
+      select: {
+        nomeArquivo: true,
+        urlStorage: true,
+        urlOtimizada: true,
+        statusProcessamento: true,
+      },
+    });
+    if (!video) {
+      throw new NotFoundException('Video nao encontrado');
+    }
+
+    const entregaOtimizada = tipo === 'otimizado' && !!video.urlOtimizada;
+    const sourceUrl = entregaOtimizada
+      ? (video.urlOtimizada as string)
+      : video.urlStorage;
+    const tipoEntregue: DownloadTipo = entregaOtimizada
+      ? 'otimizado'
+      : 'original';
+
+    const key = this.storage.keyFromPublicUrl(sourceUrl);
+    if (!key) {
+      // Video hospedado fora do nosso bucket (o video de exemplo do
+      // onboarding): nao ha o que assinar, devolve a URL como esta.
+      return {
+        url: sourceUrl,
+        filename: downloadFileName(video.nomeArquivo, sourceUrl),
+        tipo: tipoEntregue,
+        statusProcessamento: video.statusProcessamento,
+        expiresIn: null,
+      };
+    }
+
+    const filename = downloadFileName(video.nomeArquivo, key);
+    const { url, expiresIn } = await this.storage.createPresignedDownload(
+      key,
+      filename,
+      videoContentTypeFromKey(key),
+    );
+    return {
+      url,
+      filename,
+      tipo: tipoEntregue,
+      statusProcessamento: video.statusProcessamento,
+      expiresIn,
     };
   }
 

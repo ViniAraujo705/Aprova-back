@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ClientActivityModule } from '../client-activity/client-activity.module';
 import { PublicService } from './public.service';
+import { ProjectDownloadService } from './project-download.service';
 import { PublicController } from './public.controller';
 import { PublicProjectsController } from './public-projects.controller';
 import { PublicPortfoliosController } from './public-portfolios.controller';
@@ -15,6 +16,6 @@ import { PublicPortfolioHubController } from './public-portfolio-hub.controller'
     PublicPortfoliosController,
     PublicPortfolioHubController,
   ],
-  providers: [PublicService],
+  providers: [PublicService, ProjectDownloadService],
 })
 export class PublicModule {}
