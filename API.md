@@ -108,6 +108,7 @@ Resposta `201`:
 {
   "user": {
     "id": "...", "nome": "Maria Silva", "email": "maria@agencia.com", "teamRole": "owner", "status": "ativo", "accountId": "...",
+    "fotoUrl": null,
     "logoUrl": null, "corDestaque": null, "nomeAgencia": "Agência Maria",
     "branding": { "logoUrl": null, "corDestaque": null, "nomeAgencia": "Agência Maria" },
     "criadoEm": "...", "emailVerificado": false
@@ -942,9 +943,9 @@ Resposta:
 
 | Método | Rota | Auth | Body | Retorno |
 |---|---|---|---|---|
-| `POST` | `/account/invite` | `owner` | `{ email }` | `{ id, email, status, criadoEm, expiresAt, inviteUrl }` |
+| `POST` | `/account/invite` | `owner` | `{ email }` | `{ id, email, status, fotoUrl: null, criadoEm, expiresAt, inviteUrl }` |
 | `POST` | `/account/invite/:token/accept` | **sem autenticação** | `{ nome?, senha }` | `{ user, access_token }` |
-| `POST` | `/account/invite/:id/send-email` | `owner` | — | `{ sent: true, expiresAt }` |
+| `POST` | `/account/invite/:id/send-email` | `owner` | — | `{ sent: true, ...Member }` (a linha do convite: `id, nome: null, email, fotoUrl: null, teamRole, status: "invited", criadoEm, expiresAt`) |
 | `DELETE` | `/account/invite/:id` | `owner` | — | `204 No Content` |
 | `GET` | `/account/members` | `owner` | — | `Member[]` |
 | `PATCH` | `/account/members/:id/status` | `owner` | `{ status: "ativo" \| "suspenso" }` | `Member` atualizado |
@@ -1000,15 +1001,21 @@ Resposta:
   (mesmo padrão do `inviteUrl` simulado hoje).
 - `members`: lista `owner` + `editores` da conta **e** os convites ainda
   `pendente` da conta (aceitos/cancelados não aparecem). Convites entram
-  como `{ id: <id do convite>, nome: null, email, teamRole: "editor",
-  status: "invited", criadoEm, expiresAt }` — o `id` é o mesmo usado em
+  como `{ id: <id do convite>, nome: null, email, fotoUrl: null,
+  teamRole: "editor", status: "invited", criadoEm, expiresAt }` — o `id` é o mesmo usado em
   `DELETE /account/invite/:id` e `POST /account/invite/:id/send-email`. O
   backend não distingue "expirado" via status: o front compara
   `expiresAt` com a hora atual para decidir se mostra "pendente" ou
   "expirado" (convite expirado continua com `status: "invited"` até ser
   cancelado ou reenviado).
-  `Member`: `{ id, nome, email, teamRole, status, criadoEm, expiresAt? }`
-  — `expiresAt` só aparece nos itens com `status: "invited"`.
+  `Member`: `{ id, nome, email, fotoUrl, teamRole, status, criadoEm,
+  expiresAt? }` — `expiresAt` só aparece nos itens com `status:
+  "invited"`. `fotoUrl` é o `User.avatarUrl` (mesmo campo do `user` de
+  login e de `GET /users/me`), e vem `null` para quem ainda não tem foto e
+  para os convites pendentes (não existe conta ainda). Todas as rotas que
+  devolvem um `Member` — `setMemberStatus`, `promoteMember` — e também
+  `POST /account/invite/:id/send-email` mandam o campo, para o front
+  atualizar a linha da tabela pela resposta sem perder a foto.
 - `setMemberStatus`: uma conta pode ter mais de um `owner`. `editor` pode
   ser suspenso/reativado livremente. `owner` também pode ser suspenso,
   mas `400` se for o único `owner` ativo da conta (a conta nunca pode
@@ -1076,7 +1083,7 @@ Autenticado — qualquer role (`owner`, `editor`, `admin`).
 | Método | Rota | Body | Retorno |
 |---|---|---|---|
 | `GET` | `/users/me` | — | Perfil do usuário logado + branding da agência |
-| `PATCH` | `/users/me` | `{ nome?, email?, fotoUrl? }` | `User` atualizado (shape de `/auth/login` + `fotoUrl`) |
+| `PATCH` | `/users/me` | `{ nome?, email?, fotoUrl? }` | `User` atualizado (mesmo shape de `/auth/login`) |
 | `POST` | `/users/me/photo-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
 
 `GET /users/me` devolve:

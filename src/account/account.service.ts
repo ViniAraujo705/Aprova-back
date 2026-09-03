@@ -112,6 +112,9 @@ export class AccountService {
       id: invite.id,
       email: invite.email,
       status: invite.status,
+      // Convidado ainda nao tem conta, entao nao tem avatar - o campo vem
+      // mesmo assim para o front montar a linha nova sem tratar ausencia.
+      fotoUrl: null,
       criadoEm: invite.criadoEm,
       expiresAt: invite.expiresEm,
       // Exposto para facilitar teste/integracao enquanto o envio e simulado.
@@ -165,6 +168,7 @@ export class AccountService {
         id: user.id,
         nome: user.nome,
         email: user.email,
+        avatarUrl: user.avatarUrl,
         role: UserRole.editor,
         status: UserStatus.ativo,
         accountId: invite.accountId,
@@ -215,7 +219,13 @@ export class AccountService {
             },
           },
         },
-        select: { id: true, nome: true, email: true, criadoEm: true },
+        select: {
+          id: true,
+          nome: true,
+          email: true,
+          avatarUrl: true,
+          criadoEm: true,
+        },
       }),
       this.prisma.invite.update({
         where: { id: invite.id },
@@ -233,6 +243,7 @@ export class AccountService {
       nome: string;
       email: string;
       senha: string | null;
+      avatarUrl: string | null;
       status: UserStatus;
       criadoEm: Date;
     },
@@ -316,7 +327,13 @@ export class AccountService {
   async sendInviteEmail(accountId: string, inviteId: string) {
     const invite = await this.prisma.invite.findFirst({
       where: { id: inviteId, accountId },
-      select: { id: true, email: true, status: true, token: true },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        token: true,
+        criadoEm: true,
+      },
     });
     if (!invite) {
       throw new NotFoundException('Convite nao encontrado nesta conta');
@@ -340,7 +357,13 @@ export class AccountService {
       `Voce foi convidado(a) para colaborar como editor na APROVA. Acesse o link abaixo para criar sua senha:\n${inviteUrl}`,
     );
 
-    return { sent: true, expiresAt: expiresEm };
+    // Devolve a linha inteira do convite (mesmo shape de listMembers) e nao
+    // so o `sent`: o front atualiza a linha da tabela com esta resposta, sem
+    // refetch, e precisa dos campos todos para nao perder dados no caminho.
+    return {
+      sent: true,
+      ...toInvitedMemberDto({ ...invite, expiresEm }),
+    };
   }
 
   /**
@@ -361,7 +384,9 @@ export class AccountService {
           // cadastrou na plataforma (a mesma pessoa pode ter entrado em
           // agencias diferentes em datas diferentes).
           criadoEm: true,
-          user: { select: { id: true, nome: true, email: true } },
+          user: {
+            select: { id: true, nome: true, email: true, avatarUrl: true },
+          },
         },
       }),
       this.prisma.invite.findMany({
@@ -376,21 +401,14 @@ export class AccountService {
         id: m.user.id,
         nome: m.user.nome,
         email: m.user.email,
+        avatarUrl: m.user.avatarUrl,
         role: m.role,
         status: m.status,
         criadoEm: m.criadoEm,
       }),
     );
 
-    const invitedMembers = invites.map((invite) => ({
-      id: invite.id,
-      nome: null,
-      email: invite.email,
-      teamRole: UserRole.editor,
-      status: 'invited' as const,
-      criadoEm: invite.criadoEm,
-      expiresAt: invite.expiresEm,
-    }));
+    const invitedMembers = invites.map((invite) => toInvitedMemberDto(invite));
 
     return [...members, ...invitedMembers];
   }
@@ -412,7 +430,9 @@ export class AccountService {
         id: true,
         role: true,
         status: true,
-        user: { select: { id: true, nome: true, email: true } },
+        user: {
+          select: { id: true, nome: true, email: true, avatarUrl: true },
+        },
       },
     });
     if (!membership) {
@@ -458,7 +478,9 @@ export class AccountService {
         id: true,
         role: true,
         status: true,
-        user: { select: { id: true, nome: true, email: true } },
+        user: {
+          select: { id: true, nome: true, email: true, avatarUrl: true },
+        },
       },
     });
     if (!membership) {
@@ -528,4 +550,28 @@ export class AccountService {
     const origin = base && base !== '*' ? base : 'http://localhost:5173';
     return `${origin}/convite/${token}`;
   }
+}
+
+/**
+ * Shape de um convite pendente na listagem de membros. `fotoUrl` vem sempre
+ * null: o convidado ainda nao tem conta (logo, nao tem avatar) - mas o campo
+ * precisa existir para o front nao apagar a foto ao reaproveitar a resposta
+ * destas rotas para atualizar a linha da tabela.
+ */
+function toInvitedMemberDto(invite: {
+  id: string;
+  email: string;
+  criadoEm: Date;
+  expiresEm: Date;
+}) {
+  return {
+    id: invite.id,
+    nome: null,
+    email: invite.email,
+    fotoUrl: null,
+    teamRole: UserRole.editor,
+    status: 'invited' as const,
+    criadoEm: invite.criadoEm,
+    expiresAt: invite.expiresEm,
+  };
 }
