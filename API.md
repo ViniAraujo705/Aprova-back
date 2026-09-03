@@ -363,16 +363,46 @@ Autenticado — roles `owner`, `editor`.
 
 | Método | Rota | Body | Retorno |
 |---|---|---|---|
-| `POST` | `/projects` | `{ nome, clientId }` | `Project` criado |
+| `POST` | `/projects` | `{ nome, clientId, fotoUrl? }` | `Project` criado |
 | `GET` | `/projects` | — | `Project[]` (com `client: { id, nome }`, mais recente primeiro) |
 | `GET` | `/projects/:id` | — | `Project` (com `client`, `members`) |
-| `PATCH` | `/projects/:id` | `{ nome?, clientId? }` | `Project` atualizado |
+| `PATCH` | `/projects/:id` | `{ nome?, clientId?, fotoUrl? }` | `Project` atualizado |
 | `DELETE` | `/projects/:id` | — | `{ "deleted": true }` |
+| `POST` | `/projects/:id/photo-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
 | `POST` | `/projects/:id/members/:memberId` | — | `ProjectMember[]` do projeto (owner) |
 | `DELETE` | `/projects/:id/members/:memberId` | — | `ProjectMember[]` do projeto (owner) |
 
 `clientId` deve ser UUID de um cliente da mesma conta (`400` caso contrário).
 Deletar um projeto apaga em cascata seus vídeos.
+
+### Foto do projeto (`fotoUrl`)
+
+Miniatura **interna** (card da lista, cabeçalho do projeto, lista de
+projetos do cliente). Nullable, vem em `GET /projects`, `GET /projects/:id`
+e no retorno de `POST`/`PATCH`. **Não aparece na galeria pública**
+(`/public/projects/:linkPublico` monta a resposta com selects explícitos).
+
+Upload em 2 passos, sem confirmação — igual ao da foto do cliente:
+
+1. `POST /projects/:id/photo-upload-url` `{ nomeArquivo, contentType }` →
+   `{ uploadUrl, key, publicUrl, expiresIn: 600 }`
+2. `PUT` direto na `uploadUrl` (R2)
+3. `PATCH /projects/:id { "fotoUrl": publicUrl }`
+
+Como a URL assinada é escopada no `:id`, criar um projeto com foto são 3
+chamadas (`POST /projects` → upload → `PATCH`). Alternativamente dá pra
+mandar `fotoUrl` já no `POST /projects`, se a foto tiver sido subida por
+outro caminho.
+
+- `contentType` aceita `image/png`, `image/jpeg`, `image/webp` (`400` caso
+  contrário). Sem SVG: é miniatura rasterizada, não logo vetorial.
+- `PATCH` com `fotoUrl: null` remove a foto; chave ausente não mexe.
+- A rota de upload confere o `:id` de verdade (passa pelo mesmo
+  `findOne`), então um `editor` não atribuído ao projeto recebe `404` — ao
+  contrário de `POST /clients/:id/photo-upload-url`, que ignora o `:id`.
+- Apagar o cliente remove as fotos dos projetos dele no R2. Apagar um
+  projeto isolado **não** limpa o storage (comportamento que já valia pros
+  vídeos do projeto).
 
 ### Escopo de acesso por editor (`ProjectMember`)
 

@@ -97,20 +97,29 @@ export class ClientsService {
   async remove(accountId: string, id: string) {
     const client = await this.findOwnedClient(accountId, id);
 
-    const videos = await this.prisma.video.findMany({
-      where: { project: { clientId: id, accountId } },
-      select: {
-        urlStorage: true,
-        urlOtimizada: true,
-        thumbnailUrl: true,
-        comments: { select: { audioUrl: true } },
-      },
-    });
+    const [videos, projetos] = await Promise.all([
+      this.prisma.video.findMany({
+        where: { project: { clientId: id, accountId } },
+        select: {
+          urlStorage: true,
+          urlOtimizada: true,
+          thumbnailUrl: true,
+          comments: { select: { audioUrl: true } },
+        },
+      }),
+      // Miniatura de cada projeto do cliente: some junto na cascata, entao
+      // o objeto no R2 tambem precisa sair aqui.
+      this.prisma.project.findMany({
+        where: { clientId: id, accountId },
+        select: { fotoUrl: true },
+      }),
+    ]);
 
     await this.prisma.client.delete({ where: { id } });
 
     const urls = [
       client.fotoUrl,
+      ...projetos.map((p) => p.fotoUrl),
       ...videos.flatMap((v) => [
         v.urlStorage,
         v.urlOtimizada,

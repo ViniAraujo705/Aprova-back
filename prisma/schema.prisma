@@ -638,6 +638,10 @@ model Project {
   clientId    String   @map("client_id")
   accountId   String   @map("account_id")
   isExemplo   Boolean  @default(false) @map("is_exemplo")
+  // Miniatura interna do projeto (card da lista, cabecalho do projeto). Nao
+  // aparece na galeria publica: a PublicService monta a resposta do cliente
+  // com selects explicitos, entao esta coluna nao vaza por la.
+  fotoUrl     String?  @map("foto_url")
   // Link unico da galeria publica: todos os videos do projeto num so link,
   // para o cliente nao precisar entrar video por video (ver PublicService).
   linkPublico String   @unique @default(uuid()) @map("link_publico")
