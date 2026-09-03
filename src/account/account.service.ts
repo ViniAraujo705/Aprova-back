@@ -20,6 +20,7 @@ import { toMemberDto } from '../common/dto/team-role.util';
 import { resolveOwnerBranding } from '../common/account-branding.util';
 import { SessionMeta, SessionsService } from '../sessions/sessions.service';
 import { PlansService } from '../plans/plans.service';
+import { resolveFrontendUrl } from '../common/frontend-url.util';
 
 @Injectable()
 export class AccountService {
@@ -522,10 +523,7 @@ export class AccountService {
   }
 
   private buildInviteUrl(token: string): string {
-    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
-      .split(',')[0]
-      .trim();
-    const origin = base && base !== '*' ? base : 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config) ?? 'http://localhost:5173';
     return `${origin}/convite/${token}`;
   }
 }

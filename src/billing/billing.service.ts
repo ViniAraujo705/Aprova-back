@@ -15,6 +15,7 @@ import {
   BillableCycle,
   BillablePlan,
 } from './plan-billing.config';
+import { resolveFrontendUrl } from '../common/frontend-url.util';
 
 interface AsaasWebhookPayment {
   subscription?: string;
@@ -270,14 +271,11 @@ export class BillingService {
   private buildCheckoutReturnUrl(
     status: 'sucesso' | 'cancelado' | 'expirado',
   ): string {
-    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
-      .split(',')[0]
-      .trim()
-      .replace(/\/+$/, '');
+    const base = resolveFrontendUrl(this.config);
 
-    if (!base || base === '*') {
+    if (!base) {
       throw new BadRequestException(
-        'CORS_ORIGIN deve apontar para o frontend para iniciar o checkout',
+        'FRONTEND_URL (ou CORS_ORIGIN) deve apontar para o frontend para iniciar o checkout',
       );
     }
 

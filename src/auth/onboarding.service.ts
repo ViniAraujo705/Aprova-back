@@ -8,9 +8,9 @@ import { createWithUniqueLinkPublico } from '../common/short-id.util';
 // configurada, usa um placeholder — o importante é o usuário ver o
 // produto populado logo após o cadastro.
 const DEFAULT_DEMO_VIDEO_URL =
-  'https://demo.aprova.app/exemplo/video-exemplo.mp4';
+  'https://demo.checkprod.com.br/exemplo/video-exemplo.mp4';
 const DEFAULT_DEMO_THUMB_URL =
-  'https://demo.aprova.app/exemplo/video-exemplo.jpg';
+  'https://demo.checkprod.com.br/exemplo/video-exemplo.jpg';
 
 /**
  * Popula dados de exemplo logo após o cadastro, para o usuário já ver o
@@ -41,7 +41,7 @@ export class OnboardingService {
       const client = await this.prisma.client.create({
         data: {
           nome: 'Cliente Exemplo',
-          email: 'cliente.exemplo@aprova.app',
+          email: 'cliente.exemplo@checkprod.com.br',
           accountId,
           isExemplo: true,
         },

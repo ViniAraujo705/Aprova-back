@@ -31,6 +31,7 @@ import { GoogleDriveOAuthService } from './google-drive-oauth.service';
 import { GoogleDriveService } from './google-drive.service';
 import { GoogleDriveStatusDto } from './dto/google-drive-status.dto';
 import { ListGoogleDriveItemsQueryDto } from './dto/list-google-drive-items-query.dto';
+import { resolveFrontendUrl } from '../common/frontend-url.util';
 
 const STATE_PURPOSE = 'gdrive-connect';
 
@@ -152,10 +153,7 @@ export class GoogleDriveController {
   }
 
   private buildFrontendUrl(status: 'conectado' | 'erro'): string {
-    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
-      .split(',')[0]
-      .trim();
-    const origin = base && base !== '*' ? base : 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config) ?? 'http://localhost:5173';
     return `${origin}/configuracoes/integracoes?googleDrive=${status}`;
   }
 }

@@ -26,6 +26,7 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { AppleLoginDto } from './dto/apple-login.dto';
 import { toMemberDto } from '../common/dto/team-role.util';
 import { resolveOwnerBranding } from '../common/account-branding.util';
+import { resolveFrontendUrl } from '../common/frontend-url.util';
 
 @Injectable()
 export class AuthService {
@@ -699,18 +700,12 @@ export class AuthService {
   }
 
   private buildResetUrl(token: string): string {
-    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
-      .split(',')[0]
-      .trim();
-    const origin = base && base !== '*' ? base : 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config) ?? 'http://localhost:5173';
     return `${origin}/redefinir-senha/${token}`;
   }
 
   private buildConfirmUrl(token: string): string {
-    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
-      .split(',')[0]
-      .trim();
-    const origin = base && base !== '*' ? base : 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config) ?? 'http://localhost:5173';
     return `${origin}/confirmar-email/${token}`;
   }
 

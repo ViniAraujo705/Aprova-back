@@ -21,7 +21,7 @@ export class MailService {
   constructor(private readonly config: ConfigService) {
     this.apiKey = this.config.get<string>('RESEND_API_KEY') || undefined;
     this.from =
-      this.config.get<string>('MAIL_FROM') ?? 'Vistoow <no-reply@aprova.app>';
+      this.config.get<string>('MAIL_FROM') ?? 'Vistoow <no-reply@checkprod.com.br>';
   }
 
   async send(to: string, subject: string, text: string): Promise<void> {
