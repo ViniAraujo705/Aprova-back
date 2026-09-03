@@ -111,14 +111,19 @@ export class VideoProcessingProcessor extends WorkerHost {
       const optimizedPrefix =
         kind === 'video' ? 'optimized' : 'portfolio-optimized';
       const baseName = nome.replace(/\.[^.]+$/, '');
+      // buildKey sanitiza o nome e torna a key unica por execucao: o titulo
+      // do video e texto livre (um "VIDEO 01" virava espaco literal na URL
+      // publica) e um reprocessamento precisa gerar uma URL nova, senao o
+      // CDN continua servindo por um ano o objeto antigo que estava naquela
+      // mesma key (ver CacheControl em StorageService.uploadFile).
       const [thumbnailUrl, urlOtimizada] = await Promise.all([
         this.storage.uploadFile(
-          `${prefix}/${id}-${baseName}.jpg`,
+          this.storage.buildKey(`${id}-${baseName}.jpg`, prefix),
           thumbPath,
           'image/jpeg',
         ),
         this.storage.uploadFile(
-          `${optimizedPrefix}/${id}-${baseName}.mp4`,
+          this.storage.buildKey(`${id}-${baseName}.mp4`, optimizedPrefix),
           optimizedPath,
           'video/mp4',
         ),

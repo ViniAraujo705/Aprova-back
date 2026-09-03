@@ -258,7 +258,15 @@ export class StorageService {
     return null;
   }
 
-  private buildKey(fileName: string, folder = 'videos'): string {
+  /**
+   * Key de um objeto no bucket: sanitiza o nome (o titulo do video e texto
+   * livre digitado pela agencia - espaco e acento na key viram URL que
+   * consumidor nenhum alem do navegador normaliza) e prefixa com timestamp +
+   * bytes aleatorios, de modo que cada upload produza uma key nova. E isso
+   * que autoriza o `CacheControl: immutable` de `uploadFile`: um
+   * reprocessamento nunca sobrescreve um objeto ja distribuido no CDN.
+   */
+  buildKey(fileName: string, folder = 'videos'): string {
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     const unique = `${Date.now()}-${randomBytes(8).toString('hex')}`;
     return `${folder}/${unique}-${safeName}`;
