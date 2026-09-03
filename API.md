@@ -434,6 +434,12 @@ continuam ligados a ela (histórico preservado).
 
 Body: `{ "urlStorage": "...", "nomeArquivo": "..." }`
 
+> **Não é preciso reenviar link pro cliente a cada nova versão.** O
+> `linkPublico` de qualquer vídeo da cadeia — inclusive o da versão original,
+> que o cliente já recebeu — passa a entregar automaticamente a última versão
+> (ver [Resolução de versão](#resolução-de-versão-no-canal-público)). O link
+> novo desta resposta existe, mas é redundante para o cliente.
+
 ### `GET /videos?project_id=<uuid>&page=1&limit=50`
 Lista os vídeos de um projeto (mais recente primeiro por versão).
 Sem `project_id`, lista os vídeos de **todos os projetos da conta**
@@ -1479,6 +1485,30 @@ UUID v4 (36 caracteres); a partir dessa data, um id curto gerado
 aleatoriamente (10 caracteres, url-safe — ver `src/common/short-id.util.ts`).
 Ambos os formatos continuam resolvendo normalmente nas rotas públicas.
 
+### Resolução de versão no canal público
+
+Toda rota sob `/public/videos/:linkPublico` resolve a **cadeia de versões**
+antes de qualquer coisa: a partir do vídeo daquele link, desce pelos filhos
+(`videoPaiId`, ver [`POST /videos/:id/new-version`](#post-videosidnew-version))
+e opera sempre sobre a **última versão** da cadeia.
+
+Motivo: o link público é enviado ao cliente uma única vez. Antes, quando o
+editor subia uma correção, o link que a cliente já tinha em mãos continuava
+abrindo a versão antiga — na prática ela não via o ajuste, e era preciso
+mandar um link novo a cada rodada. Agora qualquer link da família (o da v1
+inclusive) abre a versão atual.
+
+Isso vale para **todas** as rotas públicas do vídeo, não só o `GET`: o
+comentário, o rating, o `approve`, o `request-changes` e o `PATCH /titulo`
+enviados por um link antigo são gravados na última versão — que é a que o
+cliente está vendo. Comentários e avaliações feitos nas versões anteriores
+continuam presos aos respectivos vídeos: o histórico é preservado, só a tela
+pública anda para a versão atual.
+
+Cadeia com ramificação (duas novas versões criadas a partir do mesmo vídeo
+pai — possível, mas fora do fluxo normal) é desempatada de forma
+determinística: maior `versao`, depois a mais recente.
+
 ### `GET /public/projects/:linkPublico`
 Sem rate limit específico (usa o global de 60/min). Entrada única da
 galeria pública: lista todos os vídeos do projeto a partir de um só link,
@@ -1513,6 +1543,11 @@ tem `videoPaiId` apontando pra outro `id` desta mesma lista, ele foi
 substituído por uma versão mais nova (`POST /videos/:id/new-version`) — o
 front usa isso pra esconder a versão antiga da galeria. `404` se
 `:linkPublico` não corresponder a nenhum projeto.
+
+> A galeria continua listando **todas** as versões (o filtro é do front, via
+> `videoPaiId`). Mas o `link` de uma versão antiga não abre mais o vídeo
+> antigo: ele entrega a última versão da cadeia — ver
+> [Resolução de versão](#resolução-de-versão-no-canal-público).
 
 `cliente.branding` é a marca própria do cliente deste projeto (ver
 [Marca própria do cliente](#marca-própria-do-cliente-clientsidbranding)),
@@ -1671,6 +1706,9 @@ Resposta:
 ```json
 {
   "id": "uuid",
+  "linkPublico": "abc123-...",
+  "latestVersionId": "uuid",
+  "resolvedFromVersion": 1,
   "nomeArquivo": "video.mp4",
   "urlStorage": "https://...",
   "urlOtimizada": "https://... ou null (ainda processando)",
@@ -1700,6 +1738,18 @@ Resposta:
 }
 ```
 
+- **Sempre responde a última versão da cadeia**, mesmo que `:linkPublico`
+  seja o de uma versão antiga (ver
+  [Resolução de versão](#resolução-de-versão-no-canal-público)). Todos os
+  campos do vídeo (`id`, `urlStorage`, `versao`, `status`, `comments`,
+  `ratings`, ...) são os da versão entregue.
+  - `linkPublico`: link **canônico** da versão entregue. Pode ser diferente
+    do link da URL acessada — use este para comparar com `queue[].link`.
+  - `latestVersionId`: id da versão entregue (igual a `id`; explícito para
+    auditoria/log do front).
+  - `resolvedFromVersion`: número da versão do link que o cliente acessou.
+    Quando é igual a `versao`, o link já era o da última versão; quando é
+    menor, o link era antigo e foi resolvido para frente.
 - `comments` aqui é **só o canal cliente** (a conversa que o cliente vê
   com o owner). `isAgencyReply: true` marca as respostas do owner.
 - `ratingQuestions`: as perguntas de avaliação **ativas** da agência dona
