@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-export interface CreateCheckoutParams {
+export interface SaveCustomerParams {
   name: string;
   email: string;
   cpfCnpj: string;
@@ -17,7 +17,11 @@ export interface CreateCheckoutParams {
   addressNumber: string;
   complement?: string;
   province: string;
-  city: number;
+  externalReference: string;
+}
+
+export interface CreateCheckoutParams {
+  customer: string;
   value: number;
   cycle: 'MONTHLY' | 'YEARLY';
   nextDueDate: string;
@@ -35,6 +39,7 @@ interface AsaasPayment {
 
 interface AsaasSubscription {
   id: string;
+  status?: string;
 }
 
 class AsaasRequestError extends Error {
@@ -67,50 +72,102 @@ export class AsaasService {
   }
 
   /**
-   * Checkout hospedado: a Asaas coleta e armazena o cartão com PCI, cria a
-   * assinatura recorrente e devolve somente o identificador da sessão.
+   * Cria (ou atualiza) o Customer da conta. Ele é a âncora da reconciliação:
+   * toda cobrança gerada pelo Checkout carrega o customer no webhook, ao
+   * contrário do externalReference, que a Asaas não propaga.
    */
-  async createCheckout(params: CreateCheckoutParams): Promise<{ url: string }> {
-    return this.run('criar checkout', async () => {
-      const checkout = await this.request<{ id: string; link?: string }>('POST', '/checkouts', {
-        billingTypes: ['CREDIT_CARD'],
-        chargeTypes: ['RECURRENT'],
-        minutesToExpire: 60,
-        callback: {
-          successUrl: params.successUrl,
-          cancelUrl: params.cancelUrl,
-          expiredUrl: params.expiredUrl,
-        },
-        items: [
-          {
-            name: params.description,
-            description: params.description,
-            quantity: 1,
-            value: params.value,
-          },
-        ],
-        customerData: {
-          name: params.name,
-          email: params.email,
-          cpfCnpj: params.cpfCnpj,
-          phone: params.phoneNumber,
-          postalCode: params.postalCode,
-          address: params.address,
-          addressNumber: params.addressNumber,
-          ...(params.complement ? { complement: params.complement } : {}),
-          province: params.province,
-          city: params.city,
-        },
+  async saveCustomer(
+    params: SaveCustomerParams,
+    existingId?: string | null,
+  ): Promise<string> {
+    return this.run('salvar cliente', async () => {
+      const body = {
+        name: params.name,
+        email: params.email,
+        cpfCnpj: params.cpfCnpj,
+        mobilePhone: params.phoneNumber,
+        postalCode: params.postalCode,
+        address: params.address,
+        addressNumber: params.addressNumber,
+        ...(params.complement ? { complement: params.complement } : {}),
+        province: params.province,
         externalReference: params.externalReference,
-        subscription: {
-          cycle: params.cycle,
-          nextDueDate: params.nextDueDate,
+        // A cobrança é toda por cartão recorrente; avisos de vencimento da
+        // Asaas só confundiriam o assinante.
+        notificationDisabled: true,
+      };
+      if (existingId) {
+        try {
+          const updated = await this.request<{ id: string }>(
+            'POST',
+            `/customers/${existingId}`,
+            body,
+          );
+          return updated.id;
+        } catch (err) {
+          // Um id guardado de outro ambiente (sandbox) ou de um cliente
+          // removido no painel devolve 404. Nesse caso o cadastro e refeito
+          // em vez de travar a contratacao.
+          if (!(err instanceof AsaasRequestError) || err.status !== 404)
+            throw err;
+          this.logger.warn(
+            `Customer ${existingId} nao existe nesta conta Asaas, recriando`,
+          );
+        }
+      }
+      const created = await this.request<{ id: string }>(
+        'POST',
+        '/customers',
+        body,
+      );
+      return created.id;
+    });
+  }
+
+  /**
+   * Checkout hospedado: a Asaas coleta e armazena o cartão com PCI e cria a
+   * assinatura recorrente já vinculada ao Customer informado.
+   */
+  async createCheckout(
+    params: CreateCheckoutParams,
+  ): Promise<{ url: string; id: string }> {
+    return this.run('criar checkout', async () => {
+      const checkout = await this.request<{ id: string; link?: string }>(
+        'POST',
+        '/checkouts',
+        {
+          billingTypes: ['CREDIT_CARD'],
+          chargeTypes: ['RECURRENT'],
+          minutesToExpire: 60,
+          callback: {
+            successUrl: params.successUrl,
+            cancelUrl: params.cancelUrl,
+            expiredUrl: params.expiredUrl,
+          },
+          items: [
+            {
+              name: params.description,
+              description: params.description,
+              quantity: 1,
+              value: params.value,
+            },
+          ],
+          customer: params.customer,
+          // Só aparece no painel da Asaas: a reconciliação não depende dele.
+          externalReference: params.externalReference,
+          subscription: {
+            cycle: params.cycle,
+            nextDueDate: params.nextDueDate,
+          },
         },
-      });
+      );
       return {
+        id: checkout.id,
         // A API atual já devolve o link pronto. Mantém fallback para versões
         // antigas da API que retornavam somente o identificador da sessão.
-        url: checkout.link ?? `${this.checkoutBaseUrl}/checkoutSession/show?id=${checkout.id}`,
+        url:
+          checkout.link ??
+          `${this.checkoutBaseUrl}/checkoutSession/show/${checkout.id}`,
       };
     });
   }
@@ -122,46 +179,50 @@ export class AsaasService {
   }
 
   /**
+   * Invalida uma sessão de checkout ainda aberta. Best-effort: uma sessão já
+   * paga, expirada ou cancelada devolve erro, e isso não deve impedir o
+   * assinante de abrir um checkout novo.
+   */
+  async cancelCheckout(id: string): Promise<void> {
+    try {
+      await this.request('POST', `/checkouts/${id}/cancel`);
+    } catch {
+      this.logger.warn(`Checkout ${id} nao pode mais ser cancelado`);
+    }
+  }
+
+  /**
    * Consulta pontual usada no retorno do Checkout caso o webhook ainda não
    * tenha sido entregue. Não substitui o webhook nem faz polling contínuo.
+   *
+   * A busca é pelo customer porque o Checkout não repassa o
+   * externalReference para a assinatura nem para as cobranças que cria.
    */
-  async findConfirmedSubscription(
-    externalReference: string,
-  ): Promise<string | null> {
-    return this.run('consultar pagamento', async () => {
-      const query = new URLSearchParams({
-        externalReference,
-        limit: '10',
-      });
-      const result = await this.request<{ data: AsaasPayment[] }>(
-        'GET',
-        `/payments?${query.toString()}`,
-      );
-      const paid = result.data.find(
-        (payment) =>
-          Boolean(payment.subscription) &&
-          (payment.status === 'CONFIRMED' || payment.status === 'RECEIVED'),
-      );
-      if (paid?.subscription) return paid.subscription;
-
-      // O Checkout pode vincular a referência diretamente à assinatura em
-      // vez da primeira cobrança. Nesse caso, confirma a cobrança daquela
-      // assinatura antes de liberar qualquer recurso.
+  async findConfirmedSubscription(customer: string): Promise<string | null> {
+    return this.run('consultar assinatura', async () => {
+      const query = new URLSearchParams({ customer, limit: '10' });
       const subscriptions = await this.request<{ data: AsaasSubscription[] }>(
         'GET',
         `/subscriptions?${query.toString()}&status=ACTIVE`,
       );
-      const subscription = subscriptions.data[0];
-      if (!subscription) return null;
 
-      const payments = await this.request<{ data: AsaasPayment[] }>(
-        'GET',
-        `/subscriptions/${subscription.id}/payments?status=CONFIRMED`,
-      );
-      return payments.data.some((payment) => payment.status === 'CONFIRMED')
-        ? subscription.id
-        : null;
+      for (const subscription of subscriptions.data) {
+        // Assinatura ativa ainda não é assinatura paga: o acesso só é
+        // liberado depois que a primeira cobrança é confirmada.
+        const payments = await this.request<{ data: AsaasPayment[] }>(
+          'GET',
+          `/subscriptions/${subscription.id}/payments`,
+        );
+        if (payments.data.some((payment) => this.isPaid(payment.status))) {
+          return subscription.id;
+        }
+      }
+      return null;
     });
+  }
+
+  private isPaid(status: string | undefined): boolean {
+    return status === 'CONFIRMED' || status === 'RECEIVED';
   }
 
   private async request<T>(

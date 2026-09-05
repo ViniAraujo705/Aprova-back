@@ -1279,29 +1279,43 @@ recorrente via cartão de crédito pra os planos `portfolio`/`pro`/`agencia`.
 |---|---|---|---|---|
 | `POST` | `/billing/checkout` | `owner` | `{ plan: "portfolio"\|"pro"\|"agencia", cycle: "MONTHLY"\|"YEARLY", cpfCnpj, phoneNumber, postalCode, address, addressNumber, complement?, province }` | `{ url }` |
 | `POST` | `/billing/cancel` | `owner` | — | `{ plan: "free" }` |
+| `POST` | `/billing/sync` | `owner` | — | `{ plan }` |
 | `POST` | `/billing/webhooks/asaas` | **sem autenticação** (verificado por token) | payload da Asaas | `{ received: true }` |
 
 - `checkout`: cria uma sessão do **Asaas Checkout** com os dados do owner,
   `cpfCnpj` (só dígitos, 11 = CPF ou 14 = CNPJ), `phoneNumber` (DDD + 10 ou
   11 dígitos), `postalCode` (CEP), endereço, número, complemento opcional e
-  bairro (`province`) e devolve a URL hospedada. O código IBGE da cidade é
-  resolvido pelo backend a partir do CEP.
+  bairro (`province`) e devolve a URL hospedada. A cidade é resolvida pela
+  própria Asaas a partir do CEP.
   O frontend deve **redirecionar** o usuário pra ela; a Asaas coleta o cartão
   de forma compatível com PCI e cria a assinatura recorrente apenas após a
   confirmação. Após a confirmação, a Asaas
   retorna para `<CORS_ORIGIN>/configuracoes/plano?status=sucesso`; o webhook
   continua sendo a fonte de verdade para ativar o plano. `502` se a Asaas estiver
-  fora do ar ou a API key não estiver configurada.
+  fora do ar ou a API key não estiver configurada. `400` se a conta já tem
+  assinatura ativa (é preciso cancelar antes de trocar de plano).
 - `cancel`: cancela a assinatura ativa na Asaas e já rebaixa a conta pra
   `free` na mesma hora (sem período de graça). `400` se a conta não tem
   assinatura ativa.
+- `sync`: reconciliação pontual, para o frontend chamar ao voltar da página
+  hospedada com `status=sucesso`. Consulta a Asaas e ativa o plano se o
+  webhook ainda não tiver chegado. É idempotente e não substitui o webhook.
 - `webhooks/asaas`: endpoint interno, chamado pela Asaas quando o status
-  do pagamento muda — o frontend nunca chama isso diretamente. Ao
-  contrário da Mercado Pago, o payload já vem completo (não precisa
-  buscar o estado na API deles). Nos eventos `PAYMENT_CONFIRMED`/
-  `PAYMENT_RECEIVED`, `Account.plan` é atualizado automaticamente;
-  `GET /plans/me` reflete a mudança assim que o webhook é processado.
-  `401` se o header `asaas-access-token` não bater com o token
+  do pagamento muda — o frontend nunca chama isso diretamente. O payload já
+  vem completo (não precisa buscar o estado na API deles). A conta é
+  encontrada pelo `customer` da cobrança: a Asaas **não** propaga o
+  `externalReference` do Checkout para a assinatura nem para as cobranças
+  que ela cria. Eventos tratados:
+  - `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED`: ativa `Account.plan` com o
+    plano contratado (`Account.asaasPlan`) e grava a assinatura.
+  - `PAYMENT_OVERDUE`: rebaixa pra `free` mas preserva `asaasPlan` — a Asaas
+    segue tentando o cartão e a próxima confirmação restaura o acesso.
+  - `SUBSCRIPTION_DELETED` / `PAYMENT_DELETED` / `PAYMENT_REFUNDED` /
+    `PAYMENT_CHARGEBACK_REQUESTED`: encerra a assinatura e volta pra `free`.
+
+  Contas sem `asaasPlan` (promovidas à mão pelo admin) são ignoradas pelo
+  webhook. `GET /plans/me` reflete a mudança assim que o webhook é
+  processado. `401` se o header `asaas-access-token` não bater com o token
   configurado no registro do webhook.
 
 ---

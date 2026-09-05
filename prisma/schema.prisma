@@ -164,11 +164,20 @@ model Account {
   // reaproveitado nos seguintes. Ver src/billing/billing.service.ts.
   cpfCnpj             String?  @map("cpf_cnpj")
   // Assinatura paga (Asaas). asaasCustomerId identifica o Customer (criado
-  // uma vez, reaproveitado); asaasSubscriptionId identifica a Subscription
-  // ativa, nula ate a primeira assinatura ser confirmada pelo webhook — ver
-  // src/billing/billing.service.ts.
+  // uma vez, reaproveitado) e e a chave de reconciliacao dos webhooks — a
+  // Asaas nao propaga o externalReference do Checkout para as cobrancas.
+  // asaasSubscriptionId identifica a Subscription ativa, nula ate a primeira
+  // cobranca ser confirmada — ver src/billing/billing.service.ts.
   asaasCustomerId     String?  @map("asaas_customer_id")
   asaasSubscriptionId String?  @unique @map("asaas_subscription_id")
+  // Plano contratado, distinto de `plan` (plano em vigor): fica preenchido do
+  // checkout ate o cancelamento. Enquanto uma cobranca esta vencida `plan`
+  // cai pra free e `asaasPlan` guarda pra onde voltar quando ela for paga.
+  asaasPlan           Plan?    @map("asaas_plan")
+  asaasCycle          String?  @map("asaas_cycle")
+  // Sessao de checkout mais recente, so pra rastrear o pagamento no painel da
+  // Asaas em caso de chamado (a API nao permite consultar checkout por id).
+  asaasCheckoutId     String?  @map("asaas_checkout_id")
   criadoEm            DateTime @default(now()) @map("criado_em")
 
   memberships         Membership[]
@@ -189,6 +198,7 @@ model Account {
   clientFields        ClientField[]
   checkDayNotes       CheckDayNote[]
 
+  @@index([asaasCustomerId])
   @@map("accounts")
 }
 

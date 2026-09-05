@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  BadGatewayException,
   Injectable,
   Logger,
   NotFoundException,
@@ -17,9 +16,15 @@ import {
 } from './plan-billing.config';
 import { resolveFrontendUrl } from '../common/frontend-url.util';
 
-interface AsaasWebhookPayment {
-  subscription?: string;
-  externalReference?: string;
+/**
+ * Payload dos webhooks da Asaas. Eventos de cobranca trazem `payment`;
+ * SUBSCRIPTION_DELETED traz `subscription`. Nenhum dos dois carrega o
+ * externalReference do Checkout — dai a reconciliacao pelo customer.
+ */
+export interface AsaasWebhookBody {
+  event?: string;
+  payment?: { customer?: string; subscription?: string };
+  subscription?: { id?: string; customer?: string };
 }
 
 @Injectable()
@@ -50,7 +55,11 @@ export class BillingService {
 
     const account = await this.prisma.account.findUniqueOrThrow({
       where: { id: accountId },
-      select: { asaasSubscriptionId: true, plan: true },
+      select: {
+        asaasCustomerId: true,
+        asaasSubscriptionId: true,
+        asaasCheckoutId: true,
+      },
     });
 
     // Depois de um pagamento confirmado, uma nova contratação exige cancelar
@@ -62,28 +71,60 @@ export class BillingService {
       );
     }
 
+    // Sem isso, um checkout anterior ainda aberto poderia ser pago depois
+    // deste e liberar o plano errado — o plano contratado é sobrescrito logo
+    // abaixo e a conta só guarda um.
+    if (account.asaasCheckoutId) {
+      await this.asaas.cancelCheckout(account.asaasCheckoutId);
+    }
+
+    // O Customer é reaproveitado entre checkouts e é por ele que os webhooks
+    // de cobrança encontram a conta. A Asaas resolve a cidade pelo CEP.
+    const customerId = await this.asaas.saveCustomer(
+      {
+        name: owner.nome,
+        email: owner.email,
+        cpfCnpj,
+        phoneNumber,
+        postalCode,
+        address,
+        addressNumber,
+        complement,
+        province,
+        externalReference: accountId,
+      },
+      account.asaasCustomerId,
+    );
+
+    // Gravado antes de abrir o checkout: se a criacao falhar, a proxima
+    // tentativa reaproveita este Customer em vez de cadastrar um duplicado.
+    await this.prisma.account.update({
+      where: { id: accountId },
+      data: { asaasCustomerId: customerId, cpfCnpj },
+    });
+
     const checkout = await this.asaas.createCheckout({
-      name: owner.nome,
-      email: owner.email,
-      cpfCnpj,
-      phoneNumber,
-      postalCode,
-      address,
-      addressNumber,
-      complement,
-      province,
-      city: await this.findCityIbge(postalCode),
+      customer: customerId,
       value: def.value,
       cycle: def.cycle,
       nextDueDate: new Date().toISOString().slice(0, 10),
       description: def.description,
-      externalReference: this.buildExternalReference(accountId, plan, cycle),
-      successUrl: this.buildCheckoutSuccessUrl(),
+      externalReference: `${accountId}:${plan}:${cycle}`,
+      successUrl: this.buildCheckoutReturnUrl('sucesso'),
       cancelUrl: this.buildCheckoutReturnUrl('cancelado'),
       expiredUrl: this.buildCheckoutReturnUrl('expirado'),
     });
 
-    return checkout;
+    await this.prisma.account.update({
+      where: { id: accountId },
+      data: {
+        asaasCheckoutId: checkout.id,
+        asaasPlan: plan,
+        asaasCycle: cycle,
+      },
+    });
+
+    return { url: checkout.url };
   }
 
   /**
@@ -105,7 +146,7 @@ export class BillingService {
     await this.asaas.cancelSubscription(account.asaasSubscriptionId);
     await this.prisma.account.update({
       where: { id: accountId },
-      data: { plan: Plan.free, asaasSubscriptionId: null },
+      data: this.clearedSubscription(),
     });
     return { plan: Plan.free };
   }
@@ -117,115 +158,153 @@ export class BillingService {
   async syncCheckout(accountId: string): Promise<{ plan: Plan }> {
     const account = await this.prisma.account.findUniqueOrThrow({
       where: { id: accountId },
-      select: { plan: true, asaasSubscriptionId: true },
+      select: {
+        plan: true,
+        asaasPlan: true,
+        asaasCustomerId: true,
+        asaasSubscriptionId: true,
+      },
     });
 
     if (account.asaasSubscriptionId) return { plan: account.plan };
-
-    const candidates: Array<{ plan: BillablePlan; cycle: BillableCycle }> = [
-      { plan: 'portfolio', cycle: 'MONTHLY' },
-      { plan: 'portfolio', cycle: 'YEARLY' },
-      { plan: 'pro', cycle: 'MONTHLY' },
-      { plan: 'pro', cycle: 'YEARLY' },
-      { plan: 'agencia', cycle: 'MONTHLY' },
-      { plan: 'agencia', cycle: 'YEARLY' },
-    ];
-
-    for (const candidate of candidates) {
-      const externalReference = this.buildExternalReference(
-        accountId,
-        candidate.plan,
-        candidate.cycle,
-      );
-      const subscription =
-        await this.asaas.findConfirmedSubscription(externalReference);
-      if (!subscription) continue;
-
-      const updated = await this.prisma.account.update({
-        where: { id: accountId },
-        data: {
-          plan: candidate.plan,
-          asaasSubscriptionId: subscription,
-        },
-        select: { plan: true },
-      });
-      this.logger.log(
-        `Plano reconciliado após retorno do checkout para conta ${accountId}`,
-      );
-      return { plan: updated.plan };
+    if (!account.asaasCustomerId || !account.asaasPlan) {
+      return { plan: account.plan };
     }
 
-    return { plan: account.plan };
+    const subscription = await this.asaas.findConfirmedSubscription(
+      account.asaasCustomerId,
+    );
+    if (!subscription) return { plan: account.plan };
+
+    const updated = await this.prisma.account.update({
+      where: { id: accountId },
+      data: { plan: account.asaasPlan, asaasSubscriptionId: subscription },
+      select: { plan: true },
+    });
+    this.logger.log(
+      `Plano reconciliado após retorno do checkout para conta ${accountId}`,
+    );
+    return { plan: updated.plan };
   }
 
   /**
-   * Valida o token do webhook e processa a notificacao. Diferente da
-   * Mercado Pago, o payload da Asaas ja vem completo (nao precisa buscar o
-   * estado na API) e a autenticacao e um token simples, nao HMAC.
+   * Valida o token do webhook e processa a notificacao. O payload da Asaas ja
+   * vem completo (nao precisa buscar o estado na API), e a conta e encontrada
+   * pelo customer: o externalReference do Checkout nao chega ate aqui.
    */
   async processWebhook(
     token: string | undefined,
-    event: string | undefined,
-    payment: AsaasWebhookPayment | undefined,
+    body: AsaasWebhookBody | undefined,
   ): Promise<void> {
     this.verifyWebhookToken(token);
 
-    if (!payment?.subscription) {
+    const event = body?.event;
+    const customerId = body?.payment?.customer ?? body?.subscription?.customer;
+    const subscriptionId =
+      body?.payment?.subscription ?? body?.subscription?.id;
+
+    if (!customerId) {
       this.logger.warn(
-        `Webhook Asaas sem payment.subscription, ignorando (event=${event})`,
+        `Webhook Asaas sem customer, ignorando (event=${event})`,
       );
       return;
     }
 
-    const parsed = this.parseExternalReference(payment.externalReference);
-    if (!parsed) {
-      this.logger.error(
-        `Webhook da assinatura ${payment.subscription} sem externalReference reconhecivel`,
-      );
-      return;
-    }
-
-    const account = await this.prisma.account.findUnique({
-      where: { id: parsed.accountId },
-      select: { asaasSubscriptionId: true, plan: true },
+    const account = await this.prisma.account.findFirst({
+      where: { asaasCustomerId: customerId },
+      select: {
+        id: true,
+        plan: true,
+        asaasPlan: true,
+        asaasSubscriptionId: true,
+      },
     });
     if (!account) {
       this.logger.warn(
-        `Webhook Asaas para conta inexistente: ${parsed.accountId}`,
-      );
-      return;
-    }
-    if (
-      account.asaasSubscriptionId &&
-      account.asaasSubscriptionId !== payment.subscription
-    ) {
-      this.logger.warn(
-        `Webhook Asaas de assinatura antiga ignorado: ${payment.subscription}`,
+        `Webhook Asaas para customer sem conta: ${customerId} (event=${event})`,
       );
       return;
     }
 
-    if (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED') {
-      await this.prisma.account.update({
-        where: { id: parsed.accountId },
-        data: {
-          plan: parsed.plan,
-          asaasSubscriptionId: payment.subscription,
-        },
-      });
-    } else if (
-      event === 'SUBSCRIPTION_DELETED' ||
-      event === 'PAYMENT_DELETED'
+    // Uma cobranca avulsa ou de uma assinatura ja substituida nao pode mexer
+    // no plano em vigor.
+    if (
+      account.asaasSubscriptionId &&
+      subscriptionId &&
+      account.asaasSubscriptionId !== subscriptionId
     ) {
-      if (account.plan !== Plan.free || account.asaasSubscriptionId) {
-        await this.prisma.account.update({
-          where: { id: parsed.accountId },
-          data: { plan: Plan.free, asaasSubscriptionId: null },
-        });
-      }
-    } else {
-      this.logger.log(`Evento de webhook Asaas ignorado: ${event}`);
+      this.logger.warn(
+        `Webhook Asaas de assinatura antiga ignorado: ${subscriptionId}`,
+      );
+      return;
     }
+
+    // Sem plano contratado a conta nao esta sob controle da cobranca — pode
+    // ter sido promovida a mao pelo admin (PATCH /admin/accounts/:id/plan), e
+    // um webhook nao deve rebaixa-la.
+    if (!account.asaasPlan) {
+      this.logger.warn(
+        `Webhook ${event} para conta ${account.id} sem plano contratado, ignorado`,
+      );
+      return;
+    }
+
+    switch (event) {
+      case 'PAYMENT_CONFIRMED':
+      case 'PAYMENT_RECEIVED':
+        await this.prisma.account.update({
+          where: { id: account.id },
+          data: {
+            plan: account.asaasPlan,
+            ...(subscriptionId ? { asaasSubscriptionId: subscriptionId } : {}),
+          },
+        });
+        this.logger.log(
+          `Conta ${account.id} ativada no plano ${account.asaasPlan} (assinatura ${subscriptionId})`,
+        );
+        return;
+
+      // Cobranca vencida suspende o acesso mas preserva asaasPlan: a Asaas
+      // segue tentando o cartao, e o proximo PAYMENT_CONFIRMED restaura.
+      case 'PAYMENT_OVERDUE':
+        if (account.plan !== Plan.free) {
+          await this.prisma.account.update({
+            where: { id: account.id },
+            data: { plan: Plan.free },
+          });
+          this.logger.log(
+            `Conta ${account.id} suspensa por cobranca vencida (plano contratado: ${account.asaasPlan})`,
+          );
+        }
+        return;
+
+      case 'SUBSCRIPTION_DELETED':
+      case 'PAYMENT_DELETED':
+      case 'PAYMENT_REFUNDED':
+      case 'PAYMENT_CHARGEBACK_REQUESTED':
+        await this.prisma.account.update({
+          where: { id: account.id },
+          data: this.clearedSubscription(),
+        });
+        this.logger.log(
+          `Assinatura da conta ${account.id} encerrada: ${event}`,
+        );
+        return;
+
+      default:
+        this.logger.log(`Evento de webhook Asaas ignorado: ${event}`);
+    }
+  }
+
+  /** Volta a conta pro free e apaga o vinculo com a assinatura encerrada. */
+  private clearedSubscription() {
+    return {
+      plan: Plan.free,
+      asaasSubscriptionId: null,
+      asaasPlan: null,
+      asaasCycle: null,
+      asaasCheckoutId: null,
+    };
   }
 
   private verifyWebhookToken(token: string | undefined): void {
@@ -256,18 +335,6 @@ export class BillingService {
     return membership.user;
   }
 
-  private buildExternalReference(
-    accountId: string,
-    plan: BillablePlan,
-    cycle: BillableCycle,
-  ): string {
-    return `${accountId}:${plan}:${cycle}`;
-  }
-
-  private buildCheckoutSuccessUrl(): string {
-    return this.buildCheckoutReturnUrl('sucesso');
-  }
-
   private buildCheckoutReturnUrl(
     status: 'sucesso' | 'cancelado' | 'expirado',
   ): string {
@@ -280,72 +347,5 @@ export class BillingService {
     }
 
     return `${base}/configuracoes/plano?status=${status}`;
-  }
-
-  private parseExternalReference(
-    externalReference: string | undefined,
-  ): { accountId: string; plan: BillablePlan; cycle: BillableCycle } | null {
-    if (!externalReference) return null;
-    const [accountId, plan, cycle] = externalReference.split(':');
-    if (
-      !accountId ||
-      (plan !== 'portfolio' && plan !== 'pro' && plan !== 'agencia')
-    )
-      return null;
-    if (cycle !== 'MONTHLY' && cycle !== 'YEARLY') return null;
-    return { accountId, plan, cycle };
-  }
-
-  /**
-   * A Asaas recebe a cidade como código IBGE. Para não exigir esse código
-   * técnico no checkout, o backend o resolve de forma confiável a partir do
-   * CEP informado pelo pagador.
-   */
-  private async findCityIbge(postalCode: string): Promise<number> {
-    const viaCepCity = await this.fetchViaCepCityIbge(postalCode);
-    if (viaCepCity) return viaCepCity;
-
-    const brasilApiCity = await this.fetchBrasilApiCityIbge(postalCode);
-    if (brasilApiCity) return brasilApiCity;
-
-    throw new BadGatewayException(
-      'Nao foi possivel identificar a cidade pelo CEP agora',
-    );
-  }
-
-  private async fetchViaCepCityIbge(
-    postalCode: string,
-  ): Promise<number | null> {
-    try {
-      const res = await fetch(`https://viacep.com.br/ws/${postalCode}/json/`);
-      const data = (await res.json()) as { erro?: boolean; ibge?: string };
-      const city = Number(data.ibge);
-      if (!res.ok || data.erro || !Number.isInteger(city) || city <= 0) {
-        return null;
-      }
-      return city;
-    } catch {
-      this.logger.warn(`ViaCEP indisponivel para o CEP ${postalCode}`);
-      return null;
-    }
-  }
-
-  private async fetchBrasilApiCityIbge(
-    postalCode: string,
-  ): Promise<number | null> {
-    try {
-      const res = await fetch(
-        `https://brasilapi.com.br/api/cep/v2/${postalCode}`,
-      );
-      const data = (await res.json()) as { codigo_municipio_ibge?: number };
-      const city = Number(data.codigo_municipio_ibge);
-      if (!res.ok || !Number.isInteger(city) || city <= 0) {
-        return null;
-      }
-      return city;
-    } catch {
-      this.logger.warn(`BrasilAPI indisponivel para o CEP ${postalCode}`);
-      return null;
-    }
   }
 }
