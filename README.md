@@ -104,7 +104,7 @@ docker run --env-file .env -p 3000:3000 vistoow-backend
 | `MAIL_FROM` | Remetente usado no envio de e-mail transacional (padrão `Vistoow <no-reply@checkprod.com.br>`) |
 | `PORT` | Porta do servidor (padrão `3000`) |
 | `CORS_ORIGIN` | Origem(ns) do frontend permitidas no CORS, separadas por vírgula |
-| `FRONTEND_URL` | Domínio canônico do frontend usado para montar os links enviados ao usuário (convite, reset de senha, confirmação de e-mail, retorno do checkout, callback das integrações). Sem ele, usa a primeira origem do `CORS_ORIGIN` |
+| `FRONTEND_URL` | **Obrigatória com `NODE_ENV=production`** — sem ela a aplicação não sobe. Domínio canônico do frontend usado para montar os links enviados ao usuário (convite, reset de senha, confirmação de e-mail, retorno do checkout, callback das integrações). Não há fallback para o `CORS_ORIGIN`: a ordem daquela lista não é contrato. Fora de produção, o padrão é `http://localhost:3000` |
 
 ## Endpoints
 
