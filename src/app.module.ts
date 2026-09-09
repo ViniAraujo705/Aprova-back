@@ -39,10 +39,13 @@ import { ClientFieldsModule } from './client-fields/client-fields.module';
 import { CheckDayNotesModule } from './checkday/checkday-notes.module';
 import { bullmqConnectionFactory } from './queue/bullmq-connection';
 import { RedisThrottlerStorage } from './common/redis-throttler.storage';
+import { validateFrontendUrl } from './common/frontend-url.util';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    // validate roda no boot: sem FRONTEND_URL em producao o app nao sobe,
+    // em vez de subir e mandar link de localhost pro usuario.
+    ConfigModule.forRoot({ isGlobal: true, validate: validateFrontendUrl }),
     // Cron dos lembretes de gravacao (NotificationsService.sendRecordingReminders).
     // So no processo web (AppModule) - o worker (WorkerModule) e dedicado a
     // processamento de video e nao precisa desse job.

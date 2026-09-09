@@ -407,53 +407,51 @@ export class AuthService {
     const emailVerificadoEm =
       params.googleId || params.appleId ? new Date() : undefined;
 
-    const { user, accountId } = await this.prisma.$transaction(
-      async (tx) => {
-        const account = await tx.account.create({
-          data: {
-            nomeAgencia: params.nomeAgencia ?? params.nome,
-            ratingQuestions: {
-              create: [
-                { texto: 'Iluminação', ordem: 0 },
-                { texto: 'Áudio', ordem: 1 },
-                { texto: 'Enquadramento', ordem: 2 },
-              ],
-            },
-            labels: {
-              create: [
-                { text: 'Urgente', color: 'red' },
-                { text: 'Revisão', color: 'amber' },
-                { text: 'Cliente VIP', color: 'violet' },
-              ],
+    const { user, accountId } = await this.prisma.$transaction(async (tx) => {
+      const account = await tx.account.create({
+        data: {
+          nomeAgencia: params.nomeAgencia ?? params.nome,
+          ratingQuestions: {
+            create: [
+              { texto: 'Iluminação', ordem: 0 },
+              { texto: 'Áudio', ordem: 1 },
+              { texto: 'Enquadramento', ordem: 2 },
+            ],
+          },
+          labels: {
+            create: [
+              { text: 'Urgente', color: 'red' },
+              { text: 'Revisão', color: 'amber' },
+              { text: 'Cliente VIP', color: 'violet' },
+            ],
+          },
+        },
+        select: { id: true },
+      });
+
+      const createdUser = await tx.user.create({
+        data: {
+          nome: params.nome,
+          email: params.email,
+          senha: params.senhaHash,
+          googleId: params.googleId,
+          appleId: params.appleId,
+          avatarUrl: params.avatarUrl,
+          // Login social ja chega com o email verificado pelo provider
+          // (checado em loginWithGoogle/loginWithApple antes de chegar aqui).
+          emailVerificadoEm,
+          memberships: {
+            create: {
+              accountId: account.id,
+              role: UserRole.owner,
+              status: UserStatus.ativo,
             },
           },
-          select: { id: true },
-        });
+        },
+      });
 
-        const createdUser = await tx.user.create({
-          data: {
-            nome: params.nome,
-            email: params.email,
-            senha: params.senhaHash,
-            googleId: params.googleId,
-            appleId: params.appleId,
-            avatarUrl: params.avatarUrl,
-            // Login social ja chega com o email verificado pelo provider
-            // (checado em loginWithGoogle/loginWithApple antes de chegar aqui).
-            emailVerificadoEm,
-            memberships: {
-              create: {
-                accountId: account.id,
-                role: UserRole.owner,
-                status: UserStatus.ativo,
-              },
-            },
-          },
-        });
-
-        return { user: createdUser, accountId: account.id };
-      },
-    );
+      return { user: createdUser, accountId: account.id };
+    });
 
     // Popula dados de exemplo em background (não bloqueia o cadastro).
     // OnboardingService.seedExampleData nunca lança — trata o próprio erro.
@@ -528,9 +526,9 @@ export class AuthService {
    * com o nome da agencia junto - base tanto da decisao de login (1 conta
    * = token direto, 2+ = selecao) quanto do endpoint /auth/my-accounts.
    */
-  private async resolveMemberships(userId: string): Promise<
-    { accountId: string; role: UserRole; nomeAgencia: string }[]
-  > {
+  private async resolveMemberships(
+    userId: string,
+  ): Promise<{ accountId: string; role: UserRole; nomeAgencia: string }[]> {
     const memberships = await this.prisma.membership.findMany({
       where: { userId, status: UserStatus.ativo },
       select: {
@@ -594,7 +592,13 @@ export class AuthService {
         criadoEm: user.criadoEm,
         emailVerificado: Boolean(user.emailVerificadoEm),
       }),
-      access_token: this.signToken(user.id, user.email, role, accountId, session.id),
+      access_token: this.signToken(
+        user.id,
+        user.email,
+        role,
+        accountId,
+        session.id,
+      ),
     };
   }
 
@@ -701,12 +705,12 @@ export class AuthService {
   }
 
   private buildResetUrl(token: string): string {
-    const origin = resolveFrontendUrl(this.config) ?? 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config);
     return `${origin}/redefinir-senha/${token}`;
   }
 
   private buildConfirmUrl(token: string): string {
-    const origin = resolveFrontendUrl(this.config) ?? 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config);
     return `${origin}/confirmar-email/${token}`;
   }
 

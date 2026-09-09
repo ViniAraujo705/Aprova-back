@@ -266,7 +266,10 @@ export class AccountService {
 
     const existingMembership = await this.prisma.membership.findUnique({
       where: {
-        userId_accountId: { userId: existingUser.id, accountId: invite.accountId },
+        userId_accountId: {
+          userId: existingUser.id,
+          accountId: invite.accountId,
+        },
       },
       select: { id: true, status: true },
     });
@@ -545,7 +548,7 @@ export class AccountService {
   }
 
   private buildInviteUrl(token: string): string {
-    const origin = resolveFrontendUrl(this.config) ?? 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config);
     return `${origin}/convite/${token}`;
   }
 }

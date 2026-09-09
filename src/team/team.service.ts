@@ -45,7 +45,12 @@ export class TeamService {
 
     const statsPorEditor = new Map<
       string,
-      { atribuicoes: number; aprovados: number; somaNotas: number; notas: number }
+      {
+        atribuicoes: number;
+        aprovados: number;
+        somaNotas: number;
+        notas: number;
+      }
     >();
     for (const { userId, video } of atribuicoes) {
       const stats = statsPorEditor.get(userId) ?? {

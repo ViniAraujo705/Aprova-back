@@ -345,14 +345,8 @@ export class BillingService {
   private buildCheckoutReturnUrl(
     status: 'sucesso' | 'cancelado' | 'expirado',
   ): string {
-    const base = resolveFrontendUrl(this.config);
-
-    if (!base) {
-      throw new BadRequestException(
-        'FRONTEND_URL (ou CORS_ORIGIN) deve apontar para o frontend para iniciar o checkout',
-      );
-    }
-
-    return `${base}/configuracoes/plano?status=${status}`;
+    // Nao precisa mais checar ausencia: sem FRONTEND_URL o app nao sobe em
+    // producao (ver validateFrontendUrl).
+    return `${resolveFrontendUrl(this.config)}/configuracoes/plano?status=${status}`;
   }
 }

@@ -33,7 +33,13 @@ export class AdminService {
       orderBy: { user: { criadoEm: 'desc' } },
       select: {
         user: {
-          select: { id: true, nome: true, email: true, status: true, criadoEm: true },
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+            status: true,
+            criadoEm: true,
+          },
         },
         account: {
           select: {
@@ -176,7 +182,9 @@ export class AdminService {
                 nomeAgencia: true,
                 memberships: {
                   where: { role: UserRole.owner },
-                  select: { user: { select: { id: true, nome: true, email: true } } },
+                  select: {
+                    user: { select: { id: true, nome: true, email: true } },
+                  },
                   orderBy: { criadoEm: 'asc' },
                   take: 1,
                 },

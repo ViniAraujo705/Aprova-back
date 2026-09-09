@@ -153,7 +153,7 @@ export class GoogleDriveController {
   }
 
   private buildFrontendUrl(status: 'conectado' | 'erro'): string {
-    const origin = resolveFrontendUrl(this.config) ?? 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config);
     return `${origin}/configuracoes/integracoes?googleDrive=${status}`;
   }
 }
