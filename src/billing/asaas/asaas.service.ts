@@ -172,10 +172,24 @@ export class AsaasService {
     });
   }
 
+  /**
+   * Cancelar e idempotente: uma assinatura que a Asaas nao conhece (id legado
+   * de outro ambiente, ou ja removida no painel) devolve 404 e conta como
+   * cancelada. Sem isso um id invalido travaria a conta pra sempre — ela nao
+   * conseguiria nem cancelar nem contratar de novo.
+   */
   async cancelSubscription(id: string): Promise<void> {
-    await this.run('cancelar assinatura', () =>
-      this.request('DELETE', `/subscriptions/${id}`),
-    );
+    await this.run('cancelar assinatura', async () => {
+      try {
+        await this.request('DELETE', `/subscriptions/${id}`);
+      } catch (err) {
+        if (!(err instanceof AsaasRequestError) || err.status !== 404)
+          throw err;
+        this.logger.warn(
+          `Assinatura ${id} nao existe nesta conta Asaas, tratando como cancelada`,
+        );
+      }
+    });
   }
 
   /**
