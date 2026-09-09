@@ -57,9 +57,31 @@ export class PlansService {
   }
 
   async getPlanInfo(accountId: string) {
-    const plan = await this.getPlan(accountId);
+    const account = await this.prisma.account.findUniqueOrThrow({
+      where: { id: accountId },
+      select: {
+        plan: true,
+        asaasPlan: true,
+        asaasCycle: true,
+        asaasSubscriptionId: true,
+      },
+    });
     const usage = await this.getUsage(accountId);
-    return { plan, limits: this.limitsFor(plan), usage };
+    const plan = account.plan;
+    return {
+      plan,
+      limits: this.limitsFor(plan),
+      usage,
+      // Estado da cobranca, separado do plano em vigor. `suspensa` distingue
+      // "voltou pro free porque cancelou" de "voltou pro free porque a
+      // cobranca venceu" — sem isso o cliente perde acesso sem entender.
+      assinatura: {
+        planoContratado: account.asaasPlan,
+        ciclo: account.asaasCycle,
+        ativa: account.asaasSubscriptionId !== null,
+        suspensa: account.asaasPlan !== null && plan === Plan.free,
+      },
+    };
   }
 
   async getUsage(accountId: string) {

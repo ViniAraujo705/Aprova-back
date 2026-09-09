@@ -1192,7 +1192,7 @@ Autenticado — `owner` ou `editor`.
 
 | Método | Rota | Body | Retorno |
 |---|---|---|---|
-| `GET` | `/plans/me` | — | `{ plan, limits, usage }` |
+| `GET` | `/plans/me` | — | `{ plan, limits, usage, assinatura }` |
 
 ```json
 {
@@ -1224,9 +1224,28 @@ Autenticado — `owner` ou `editor`.
     "approvalFilesThisMonth": 5,
     "portfolioProjects": 2,
     "ratingQuestions": 3
+  },
+  "assinatura": {
+    "planoContratado": null,
+    "ciclo": null,
+    "ativa": false,
+    "suspensa": false
   }
 }
 ```
+
+`assinatura` descreve o estado da **cobrança**, que é diferente do plano em
+vigor (`plan`):
+
+- `planoContratado`: o plano assinado na Asaas, ou `null` se a conta nunca
+  assinou (ou já cancelou).
+- `ciclo`: `"MONTHLY"` ou `"YEARLY"`.
+- `ativa`: existe assinatura confirmada na Asaas.
+- `suspensa`: **`true` quando `plan` caiu pra `free` mas o plano contratado
+  continua lá** — ou seja, a cobrança do mês venceu e a Asaas ainda está
+  tentando o cartão. É o caso em que a UI deve dizer "pagamento pendente"
+  em vez de simplesmente mostrar a conta como gratuita; o acesso volta
+  sozinho quando a cobrança for paga.
 
 Planos: `portfolio`, `free`, `pro`, `agencia`. `limits.*` numérico com valor
 `null` significa ilimitado. `recordingManagement`/`deliveryManagement`/

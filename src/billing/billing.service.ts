@@ -53,6 +53,13 @@ export class BillingService {
     const owner = await this.getOwner(accountId);
     const def = PLAN_BILLING[plan][cycle];
 
+    // Um checkout ja pago cuja confirmacao ainda nao chegou deixa a conta sem
+    // asaasSubscriptionId. Sem reconciliar antes, a guarda abaixo nao pegaria
+    // e um segundo clique em "assinar" abriria uma segunda assinatura — o
+    // cliente pagaria duas vezes. Sai barato: retorna de imediato quando nao
+    // ha nada pendente pra reconciliar.
+    await this.syncCheckout(accountId);
+
     const account = await this.prisma.account.findUniqueOrThrow({
       where: { id: accountId },
       select: {
