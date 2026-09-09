@@ -1,11 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { CreatePortfolioCategoryDto } from './dto/create-portfolio-category.dto';
 import { UpdatePortfolioCategoryDto } from './dto/update-portfolio-category.dto';
+import { PortfolioCategoryCoverUploadUrlDto } from './dto/cover-upload-url.dto';
 
 @Injectable()
 export class PortfolioCategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   findAll(accountId: string) {
     return this.prisma.portfolioCategory.findMany({
@@ -32,6 +37,25 @@ export class PortfolioCategoriesService {
       where: { id },
       data: dto,
     });
+  }
+
+  /**
+   * Presigned URL pra capa da aba - mesmo contrato de 2 passos de
+   * POST /portfolios/:id/cover-upload-url: o front faz PUT na uploadUrl e
+   * depois manda a publicUrl em PATCH /portfolio-categories/:id { capaUrl }.
+   * Sem passo de confirmacao.
+   */
+  async createCoverUploadUrl(
+    accountId: string,
+    id: string,
+    dto: PortfolioCategoryCoverUploadUrlDto,
+  ) {
+    await this.assertOwned(accountId, id);
+    return this.storage.createPresignedUploadIn(
+      'portfolio-category-covers',
+      dto.nomeArquivo,
+      dto.contentType,
+    );
   }
 
   /**

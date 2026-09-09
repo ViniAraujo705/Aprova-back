@@ -828,12 +828,24 @@ Resposta `200`: `{ "uploadUrl": "...", "key": "...", "publicUrl": "...", "expire
 |---|---|---|---|
 | `GET` | `/portfolio-categories` | — | `PortfolioCategory[]` (por `ordem` crescente) |
 | `POST` | `/portfolio-categories` | `{ nome }` | `PortfolioCategory` criada (entra no fim da lista) |
-| `PATCH` | `/portfolio-categories/:id` | `{ nome?, ordem? }` | `PortfolioCategory` atualizada |
+| `PATCH` | `/portfolio-categories/:id` | `{ nome?, ordem?, capaUrl? }` | `PortfolioCategory` atualizada |
+| `POST` | `/portfolio-categories/:id/cover-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
 | `DELETE` | `/portfolio-categories/:id` | — | `{ "deleted": true }` |
 
-`PortfolioCategory`: `{ id, nome, ordem, criadoEm, atualizadoEm }`. Livres —
+`PortfolioCategory`: `{ id, nome, ordem, capaUrl, criadoEm, atualizadoEm }`. Livres —
 o owner nomeia e ordena como quiser (não há reordenação em lote como em
 `/portfolios/:id/videos/order`; ajuste `ordem` item a item via `PATCH`).
+
+`capaUrl` é a **capa própria da aba** no hub público. Quando `null`, a
+vitrine cai no fallback histórico — a capa do primeiro álbum da categoria —,
+que fazia uma aba com vários álbuns aparecer com a cara do primeiro deles
+(uma aba "Marketing médico" com 3 álbuns aparecia como "HDR Fotos"). Fluxo
+de 2 passos idêntico ao da capa de álbum: `POST
+/portfolio-categories/:id/cover-upload-url` (só imagem: `image/png`,
+`image/jpeg`, `image/webp`) → `PUT <uploadUrl>` no R2 → `PATCH
+/portfolio-categories/:id { capaUrl: publicUrl }`, sem passo de
+confirmação. `capaUrl: null` no `PATCH` remove a capa; ausente deixa como
+está. Os arquivos vão pro prefixo `portfolio-category-covers/` do bucket.
 
 Excluir uma categoria (`DELETE`) **não apaga** os álbuns associados a ela —
 só desassocia (`categoriaId: null` em cada `Portfolio` que apontava pra
@@ -1743,6 +1755,7 @@ Resposta:
     {
       "id": "uuid",
       "nome": "Casamento",
+      "capaUrl": "https://... ou null",
       "portfolios": [
         { "id": "uuid", "nome": "Reels para redes sociais", "descricao": "... ou null", "link": "reels-de-verao", "capaUrl": "https://... ou null", "tipoMidiaPredominante": "video" }
       ]
@@ -1754,8 +1767,14 @@ Resposta:
 mais recente primeiro. Cada item de `portfolios[]` é um resumo do álbum
 (sem `videos[]`) — `link` é o `linkPublico` do portfólio, o frontend navega
 pra `GET /public/portfolios/:linkPublico` a partir dele pra abrir o álbum
-completo. `capaUrl` já resolve o mesmo fallback da versão autenticada
-(posterUrl do primeiro item quando nenhuma capa explícita foi setada).
+completo. O `capaUrl` **de cada álbum** já resolve o mesmo fallback da
+versão autenticada (posterUrl do primeiro item quando nenhuma capa
+explícita foi setada).
+
+O `capaUrl` **da categoria** (irmão de `nome`, não confundir com o do
+álbum) é a capa da aba, sem fallback aplicado no backend: quando vem
+`null`, é o frontend que decide — hoje ele cai na capa do primeiro álbum da
+aba.
 
 `tipoMidiaPredominante` (`"video"` | `"foto"`) é o tipo de mídia majoritário
 entre os itens do álbum (maioria simples por contagem de `tipoMidia`) — em

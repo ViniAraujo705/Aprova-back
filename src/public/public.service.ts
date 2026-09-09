@@ -222,6 +222,7 @@ export class PublicService {
               select: {
                 id: true,
                 nome: true,
+                capaUrl: true,
                 portfolios: {
                   orderBy: { criadoEm: 'desc' },
                   select: {
@@ -255,6 +256,9 @@ export class PublicService {
       .map((cat) => ({
         id: cat.id,
         nome: cat.nome,
+        // Capa da ABA (nao confundir com o capaUrl de cada album abaixo).
+        // Null aqui = o front cai no fallback da capa do primeiro album.
+        capaUrl: cat.capaUrl,
         // So albuns com pelo menos um item (video ou foto) - album vazio
         // nao aparece no hub.
         portfolios: cat.portfolios
