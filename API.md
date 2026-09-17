@@ -865,6 +865,7 @@ e **cliente** (resposta do owner ao comentário público do cliente).
 | Método | Rota | Role | Body | Descrição |
 |---|---|---|---|---|
 | `GET` | `/videos/:id/comments/internal` | `owner`, `editor` | — | Lista o canal interno |
+| `GET` | `/videos/:id/comments/internal/previous-versions` | `owner`, `editor` | — | Canal interno das versões **anteriores** deste vídeo (só leitura); cada item traz `versao`, mais recente primeiro |
 | `POST` | `/videos/:id/comments/internal` | `owner`, `editor` | `{ timestampVideo, texto, parentId? }` | Cria comentário interno (autor = usuário do token) |
 | `POST` | `/videos/:id/comments/client-reply` | `owner` apenas | `{ timestampVideo, texto, parentId? }` | Resposta do owner ao cliente, no canal cliente |
 | `DELETE` | `/videos/:id/comments/:commentId` | `owner`, `editor` | — | Exclui um comentário do canal **cliente** (moderação) |
@@ -1813,6 +1814,9 @@ Resposta:
   "comments": [
     { "id": "...", "timestampVideo": 12, "texto": "... ou null (comentário só de áudio)", "audioUrl": "https://... ou null", "autorType": "cliente", "autorNome": "Fulano", "autorUser": null, "parentId": null, "criadoEm": "...", "isAgencyReply": false }
   ],
+  "comentariosVersoesAnteriores": [
+    { "id": "...", "timestampVideo": 6, "texto": "...", "audioUrl": null, "autorType": "cliente", "autorNome": "Fulano", "autorUser": null, "parentId": null, "criadoEm": "...", "versao": 1, "isAgencyReply": false }
+  ],
   "ratings": [
     { "id": "...", "ratingQuestionId": "uuid", "nota": 4, "criadoEm": "..." }
   ],
@@ -1827,6 +1831,12 @@ Resposta:
 }
 ```
 
+- `comentariosVersoesAnteriores`: canal do cliente das versões **anteriores**
+  à entregue (pai, avó, ...), cada item com a `versao` em que foi feito, mais
+  recente primeiro. Subir nova versão não apaga comentário nenhum — cada versão
+  é um vídeo novo e os comentários ficam presos a ela; este campo só os
+  devolve pra tela mostrar recolhidos e só leitura. O `timestampVideo` se
+  refere ao corte antigo. Vazio na v1.
 - **Sempre responde a última versão da cadeia**, mesmo que `:linkPublico`
   seja o de uma versão antiga (ver
   [Resolução de versão](#resolução-de-versão-no-canal-público)). Todos os

@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertProjectAccess } from '../common/project-access.util';
+import { previousVersionIds } from '../common/version-chain.util';
 import { AuthUser } from '../auth/decorators/current-user.decorator';
 import { ClientActivityService } from '../client-activity/client-activity.service';
 import { CreateInternalCommentDto } from './dto/create-internal-comment.dto';
@@ -76,6 +77,33 @@ export class CommentsService {
       select: COMMENT_SELECT,
     });
     return comments.map(toCommentDto);
+  }
+
+  /**
+   * Canal INTERNO das versoes ANTERIORES deste video (pai, avo, ...). Nada e
+   * apagado ao subir nova versao - os comentarios ficam presos a versao em
+   * que foram feitos; isto so os devolve pra revisao interna mostrar
+   * recolhidos. Cada item traz a `versao` de origem, mais recente primeiro.
+   */
+  async listInternalPreviousVersions(
+    accountId: string,
+    videoId: string,
+    user: AuthUser,
+  ) {
+    await this.assertVideoInAccount(accountId, videoId, user);
+    const previousIds = await previousVersionIds(this.prisma, videoId);
+    if (previousIds.length === 0) return [];
+    const comments = await this.prisma.comment.findMany({
+      where: { videoId: { in: previousIds }, channel: CommentChannel.interno },
+      orderBy: [{ timestampVideo: 'asc' }, { criadoEm: 'asc' }],
+      select: { ...COMMENT_SELECT, video: { select: { versao: true } } },
+    });
+    return comments
+      .map(({ video, ...comment }) => ({
+        ...toCommentDto(comment),
+        versao: video.versao,
+      }))
+      .sort((a, b) => b.versao - a.versao);
   }
 
   /**

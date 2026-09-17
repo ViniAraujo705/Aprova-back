@@ -28,6 +28,7 @@ import {
   downloadFileName,
   videoContentTypeFromKey,
 } from '../common/download-file.util';
+import { previousVersionIds } from '../common/version-chain.util';
 
 @Injectable()
 export class PublicService {
@@ -320,61 +321,80 @@ export class PublicService {
    */
   async getVideo(linkPublico: string) {
     const video = await this.resolveVideo(linkPublico);
+    const previousIds = await previousVersionIds(this.prisma, video.id);
 
-    const [comments, ratings, queue, ratingQuestions] = await Promise.all([
-      this.prisma.comment.findMany({
-        // Canal publico: SOMENTE comentarios do canal do cliente. O canal
-        // interno da agencia nunca e exposto aqui.
-        where: { videoId: video.id, channel: CommentChannel.cliente },
-        orderBy: { timestampVideo: 'asc' },
-        select: {
-          id: true,
-          timestampVideo: true,
-          texto: true,
-          audioUrl: true,
-          autorType: true,
-          autorNome: true,
-          // Respostas do owner ao cliente aparecem no mesmo canal; o nome
-          // vem do usuario autenticado (autor_nome fica nulo nesse caso).
-          autorUser: { select: { nome: true } },
-          parentId: true,
-          criadoEm: true,
-        },
-      }),
-      this.prisma.rating.findMany({
-        where: { videoId: video.id },
-        orderBy: { criadoEm: 'asc' },
-        select: {
-          id: true,
-          ratingQuestionId: true,
-          nota: true,
-          criadoEm: true,
-        },
-      }),
-      // Fila para o swipe "Preview Reels": todos os videos do mesmo
-      // projeto (escopo resolvido a partir do video atual, nunca de um
-      // parametro da request), incluindo o proprio video atual - o front
-      // localiza a posicao via linkPublico para navegar prev/next. Escopo
-      // e o projeto (nao o cliente inteiro) para o reels nao vazar para
-      // entregas antigas de outros projetos do mesmo cliente.
-      this.prisma.video.findMany({
-        where: { projectId: video.projectId },
-        orderBy: { criadoEm: 'asc' },
-        select: {
-          linkPublico: true,
-          nomeArquivo: true,
-          thumbnailUrl: true,
-          status: true,
-        },
-      }),
-      // Perguntas de avaliacao ativas da conta dona deste video (substitui
-      // as categorias fixas iluminacao/audio/enquadramento).
-      this.prisma.ratingQuestion.findMany({
-        where: { accountId: video.project.accountId, ativo: true },
-        orderBy: { ordem: 'asc' },
-        select: { id: true, texto: true, ordem: true },
-      }),
-    ]);
+    const publicCommentSelect = {
+      id: true,
+      timestampVideo: true,
+      texto: true,
+      audioUrl: true,
+      autorType: true,
+      autorNome: true,
+      // Respostas do owner ao cliente aparecem no mesmo canal; o nome
+      // vem do usuario autenticado (autor_nome fica nulo nesse caso).
+      autorUser: { select: { nome: true } },
+      parentId: true,
+      criadoEm: true,
+    } as const;
+
+    const [comments, previousComments, ratings, queue, ratingQuestions] =
+      await Promise.all([
+        this.prisma.comment.findMany({
+          // Canal publico: SOMENTE comentarios do canal do cliente. O canal
+          // interno da agencia nunca e exposto aqui.
+          where: { videoId: video.id, channel: CommentChannel.cliente },
+          orderBy: { timestampVideo: 'asc' },
+          select: publicCommentSelect,
+        }),
+        // Ajustes pedidos nas versoes anteriores (mesmo canal do cliente).
+        // Continuam gravados na versao em que foram feitos; o front mostra
+        // recolhidos e so leitura - o timestamp se refere ao corte antigo.
+        // Na v1 `previousIds` e vazio e o `in: []` nao encontra nada.
+        this.prisma.comment.findMany({
+          where: {
+            videoId: { in: previousIds },
+            channel: CommentChannel.cliente,
+          },
+          orderBy: [{ timestampVideo: 'asc' }, { criadoEm: 'asc' }],
+          select: {
+            ...publicCommentSelect,
+            video: { select: { versao: true } },
+          },
+        }),
+        this.prisma.rating.findMany({
+          where: { videoId: video.id },
+          orderBy: { criadoEm: 'asc' },
+          select: {
+            id: true,
+            ratingQuestionId: true,
+            nota: true,
+            criadoEm: true,
+          },
+        }),
+        // Fila para o swipe "Preview Reels": todos os videos do mesmo
+        // projeto (escopo resolvido a partir do video atual, nunca de um
+        // parametro da request), incluindo o proprio video atual - o front
+        // localiza a posicao via linkPublico para navegar prev/next. Escopo
+        // e o projeto (nao o cliente inteiro) para o reels nao vazar para
+        // entregas antigas de outros projetos do mesmo cliente.
+        this.prisma.video.findMany({
+          where: { projectId: video.projectId },
+          orderBy: { criadoEm: 'asc' },
+          select: {
+            linkPublico: true,
+            nomeArquivo: true,
+            thumbnailUrl: true,
+            status: true,
+          },
+        }),
+        // Perguntas de avaliacao ativas da conta dona deste video (substitui
+        // as categorias fixas iluminacao/audio/enquadramento).
+        this.prisma.ratingQuestion.findMany({
+          where: { accountId: video.project.accountId, ativo: true },
+          orderBy: { ordem: 'asc' },
+          select: { id: true, texto: true, ordem: true },
+        }),
+      ]);
 
     return {
       id: video.id,
@@ -422,6 +442,15 @@ export class PublicService {
         ...c,
         isAgencyReply: c.autorType === CommentAuthorType.owner,
       })),
+      // Mais recente primeiro (v2 antes de v1); cada item traz a `versao`
+      // em que foi feito.
+      comentariosVersoesAnteriores: previousComments
+        .map(({ video: origem, ...c }) => ({
+          ...c,
+          versao: origem.versao,
+          isAgencyReply: c.autorType === CommentAuthorType.owner,
+        }))
+        .sort((a, b) => b.versao - a.versao),
       ratings,
       ratingQuestions,
       queue: queue.map((v) => ({

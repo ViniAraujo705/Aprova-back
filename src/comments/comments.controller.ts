@@ -47,6 +47,23 @@ export class CommentsController {
     return this.commentsService.listInternal(user.accountId, videoId, user);
   }
 
+  @Get('internal/previous-versions')
+  @Roles(UserRole.owner, UserRole.editor)
+  @ApiOperation({
+    summary:
+      'Canal INTERNO das versões anteriores deste vídeo (só leitura), cada item com a `versao` de origem.',
+  })
+  listInternalPreviousVersions(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) videoId: string,
+  ) {
+    return this.commentsService.listInternalPreviousVersions(
+      user.accountId,
+      videoId,
+      user,
+    );
+  }
+
   @Post('internal')
   @Roles(UserRole.owner, UserRole.editor)
   @ApiOperation({
