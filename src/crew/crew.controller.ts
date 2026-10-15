@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -32,5 +41,17 @@ export class CrewController {
   @ApiOperation({ summary: 'Lista a equipe de gravacao da conta.' })
   findAll(@CurrentUser() user: AuthUser) {
     return this.crewService.findAll(user.accountId);
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary:
+      'Remove uma pessoa da equipe de gravacao. Sai tambem de todos os eventos em que estava escalada (cascade em RecordingEventCrew).',
+  })
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.crewService.remove(user.accountId, id);
   }
 }

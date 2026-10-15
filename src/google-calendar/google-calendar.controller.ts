@@ -149,6 +149,9 @@ export class GoogleCalendarController {
 
   private buildFrontendUrl(status: 'conectado' | 'erro'): string {
     const origin = resolveFrontendUrl(this.config);
-    return `${origin}/configuracoes/integracoes?google=${status}`;
+    // Volta pro calendario, nao pra /configuracoes/integracoes: a conexao e
+    // pessoal (owner E editor), e integracoes e owner-only - o editor caia
+    // num redirect pro dashboard sem ver o resultado.
+    return `${origin}/calendario?google=${status}`;
   }
 }
