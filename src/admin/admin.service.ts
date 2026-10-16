@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ProcessamentoStatus,
   UserRole,
@@ -218,10 +222,15 @@ export class AdminService {
   async reprocessVideo(id: string) {
     const video = await this.prisma.video.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, arquivoRemovidoEm: true },
     });
     if (!video) {
       throw new NotFoundException('Video nao encontrado');
+    }
+    if (video.arquivoRemovidoEm) {
+      throw new ConflictException(
+        'O arquivo deste video ja foi removido (armazenamento liberado)',
+      );
     }
 
     await this.prisma.video.update({

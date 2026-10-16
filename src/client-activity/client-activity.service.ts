@@ -8,7 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export interface LogClientActivityParams {
   accountId: string;
-  clienteId: string;
+  /** Nulo em projeto avulso (sem cliente cadastrado): nao ha historico para registrar. */
+  clienteId: string | null;
   tipo: ClientActivityType;
   atorTipo: ClientActivityAtorTipo;
   atorNome?: string | null;
@@ -47,11 +48,12 @@ export class ClientActivityService {
   constructor(private readonly prisma: PrismaService) {}
 
   async log(params: LogClientActivityParams): Promise<void> {
+    if (!params.clienteId) return;
     try {
       await this.prisma.clientActivity.create({
         data: {
           accountId: params.accountId,
-          clienteId: params.clienteId,
+          clienteId: params.clienteId as string,
           tipo: params.tipo,
           atorTipo: params.atorTipo,
           atorNome: params.atorNome ?? null,

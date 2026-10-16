@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  GoneException,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -50,6 +51,7 @@ export class PublicService {
       where: { linkPublico },
       select: {
         nome: true,
+        contatoAvulso: true,
         client: {
           select: { nome: true, logoUrl: true, corDestaque: true },
         },
@@ -78,6 +80,7 @@ export class PublicService {
             statusProcessamento: true,
             versao: true,
             criadoEm: true,
+            arquivoRemovidoEm: true,
           },
         },
       },
@@ -91,9 +94,11 @@ export class PublicService {
       // Marca propria do cliente (branding), quando configurada (ver
       // ClientsService.updateBranding), sobrepoe a da agencia nos links
       // publicos deste cliente - merge fica a cargo do frontend.
+      // Projeto avulso: sem cliente cadastrado, mostra o nome livre de quem
+      // recebe o link (ou nada) e usa so o branding da agencia.
       cliente: {
-        nome: project.client.nome,
-        branding: this.clientBranding(project.client),
+        nome: project.client?.nome ?? project.contatoAvulso ?? '',
+        branding: project.client ? this.clientBranding(project.client) : null,
       },
       agencia: {
         nome: project.account.nomeAgencia,
@@ -112,6 +117,7 @@ export class PublicService {
         status: v.status,
         statusProcessamento: v.statusProcessamento,
         versao: v.versao,
+        arquivoRemovidoEm: v.arquivoRemovidoEm,
       })),
     };
   }
@@ -415,6 +421,9 @@ export class PublicService {
       urlOtimizada: video.urlOtimizada,
       thumbnailUrl: video.thumbnailUrl,
       statusProcessamento: video.statusProcessamento,
+      // Preenchido quando a agencia liberou o armazenamento do projeto
+      // aprovado: o arquivo nao existe mais, o front mostra so a capa.
+      arquivoRemovidoEm: video.arquivoRemovidoEm,
       versao: video.versao,
       status: video.status,
       // Nota geral (1-5) dada pelo cliente no momento da aprovacao.
@@ -424,9 +433,9 @@ export class PublicService {
       // tags (preview do WhatsApp) no frontend
       projeto: { nome: video.project.nome },
       cliente: {
-        nome: video.project.client.nome,
-        descricao: video.project.client.descricao,
-        fotoUrl: video.project.client.fotoUrl,
+        nome: video.project.client?.nome ?? video.project.contatoAvulso ?? '',
+        descricao: video.project.client?.descricao ?? null,
+        fotoUrl: video.project.client?.fotoUrl ?? null,
       },
       // Branding (white label) da agencia dona do video. O nome vem da
       // conta; logo/cor vem do owner da agencia.
@@ -482,10 +491,16 @@ export class PublicService {
         urlStorage: true,
         urlOtimizada: true,
         statusProcessamento: true,
+        arquivoRemovidoEm: true,
       },
     });
     if (!video) {
       throw new NotFoundException('Video nao encontrado');
+    }
+    if (video.arquivoRemovidoEm) {
+      throw new GoneException(
+        'O arquivo deste video foi removido pela agencia apos a aprovacao',
+      );
     }
 
     const entregaOtimizada = tipo === 'otimizado' && !!video.urlOtimizada;
@@ -869,6 +884,7 @@ export class PublicService {
         status: true,
         notaGeral: true,
         criadoEm: true,
+        arquivoRemovidoEm: true,
         // Usado so internamente para escopar a queue (nunca vai na resposta).
         projectId: true,
         // Somente o nome do projeto/cliente e o branding da agencia deste
@@ -878,6 +894,7 @@ export class PublicService {
             nome: true,
             accountId: true,
             clientId: true,
+            contatoAvulso: true,
             client: {
               select: { nome: true, descricao: true, fotoUrl: true },
             },

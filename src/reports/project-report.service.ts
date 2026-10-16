@@ -34,6 +34,7 @@ export class ProjectReportService {
       select: {
         nome: true,
         criadoEm: true,
+        contatoAvulso: true,
         client: { select: { nome: true, email: true } },
         videos: {
           orderBy: [{ versao: 'asc' }],
@@ -80,7 +81,8 @@ export class ProjectReportService {
   private buildDocDefinition(project: {
     nome: string;
     criadoEm: Date;
-    client: { nome: string; email: string | null };
+    contatoAvulso: string | null;
+    client: { nome: string; email: string | null } | null;
     videos: {
       nomeArquivo: string;
       versao: number;
@@ -106,9 +108,11 @@ export class ProjectReportService {
         style: 'meta',
         text: [
           { text: 'Cliente: ', bold: true },
-          project.client.email
-            ? `${project.client.nome} (${project.client.email})\n`
-            : `${project.client.nome}\n`,
+          !project.client
+            ? `${project.contatoAvulso || 'Projeto avulso'}\n`
+            : project.client.email
+              ? `${project.client.nome} (${project.client.email})\n`
+              : `${project.client.nome}\n`,
           { text: 'Gerado em: ', bold: true },
           this.formatDate(new Date()),
         ],

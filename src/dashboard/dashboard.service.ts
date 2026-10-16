@@ -82,7 +82,7 @@ export class DashboardService {
     aprovados: {
       criadoEm: Date;
       aprovadoEm: Date | null;
-      project: { client: { id: string; nome: string } };
+      project: { client: { id: string; nome: string } | null };
     }[],
   ): {
     maisRapido: ClienteTempoMedio | null;
@@ -94,7 +94,8 @@ export class DashboardService {
     >();
 
     for (const v of aprovados) {
-      if (!v.aprovadoEm) continue;
+      // Projeto avulso nao tem cliente para entrar no ranking.
+      if (!v.aprovadoEm || !v.project.client) continue;
       const durMs = v.aprovadoEm.getTime() - v.criadoEm.getTime();
       if (durMs < 0) continue;
       const { id, nome } = v.project.client;

@@ -653,7 +653,10 @@ model CheckDayNote {
 model Project {
   id          String   @id @default(uuid())
   nome        String
-  clientId    String   @map("client_id")
+  // Nulo no "projeto avulso": link de aprovacao para quem nao esta
+  // cadastrado como cliente. O nome de quem recebe vai em contatoAvulso.
+  clientId    String?  @map("client_id")
+  contatoAvulso String? @map("contato_avulso")
   accountId   String   @map("account_id")
   isExemplo   Boolean  @default(false) @map("is_exemplo")
   // Miniatura interna do projeto (card da lista, cabecalho do projeto). Nao
@@ -665,7 +668,7 @@ model Project {
   linkPublico String   @unique @default(uuid()) @map("link_publico")
   criadoEm    DateTime @default(now()) @map("criado_em")
 
-  client     Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client     Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   account    Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
   videos     Video[]
   members    ProjectMember[]
@@ -707,6 +710,11 @@ model Video {
   notaGeral           Int?                @map("nota_geral")
   // Etapa de producao interna (board Kanban) - ver EtapaProducao.
   etapaProducao       EtapaProducao       @default(planejado) @map("etapa_producao")
+  // Quando o arquivo (original + otimizado) foi apagado do R2 ao liberar o
+  // armazenamento de um projeto aprovado (ProjectsService.releaseStorage).
+  // A linha fica: comentarios, notas e relatorios continuam valendo; so a
+  // reproducao/download deixam de existir. Thumbnail e mantida.
+  arquivoRemovidoEm   DateTime?           @map("arquivo_removido_em")
   criadoEm            DateTime            @default(now()) @map("criado_em")
 
   project           Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
