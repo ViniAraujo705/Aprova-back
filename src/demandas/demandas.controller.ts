@@ -37,7 +37,7 @@ export class DemandasController {
       'Cria um card generico do board Kanban (projeto/campanha/gravacao/demanda), sem vinculo com Video.',
   })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateDemandaDto) {
-    return this.demandasService.create(user.accountId, dto);
+    return this.demandasService.create(user.accountId, dto, user.id);
   }
 
   @Get()
@@ -55,7 +55,7 @@ export class DemandasController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: UpdateDemandaDto,
   ) {
-    return this.demandasService.update(user.accountId, id, dto);
+    return this.demandasService.update(user.accountId, id, dto, user.id);
   }
 
   @Patch(':id/etapa')

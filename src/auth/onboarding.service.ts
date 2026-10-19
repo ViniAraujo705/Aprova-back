@@ -99,7 +99,13 @@ export class OnboardingService {
             },
             ratings: {
               create: ratingQuestions.map((q, i) => ({
+                accountId,
                 ratingQuestionId: q.id,
+                projectId: project.id,
+                clienteId: client.id,
+                videoNome: 'video-exemplo.mp4',
+                projetoNome: project.nome,
+                clienteNome: client.nome,
                 nota: notasFake[i] ?? 5,
               })),
             },

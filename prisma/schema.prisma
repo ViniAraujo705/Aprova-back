@@ -148,6 +148,13 @@ enum NotificationType {
   aprovacao_cliente
   ajuste_solicitado
   avaliacao_cliente
+  // Prazo (video ou demanda) vence nas proximas 24h / acabou de vencer.
+  prazo_proximo
+  prazo_vencido
+  // Demanda criada (ou atribuida) para a pessoa.
+  nova_demanda
+  // Video enviado ha 3 dias sem resposta do cliente.
+  aguardando_cliente
   // Lembrete de gravacao proxima (RecordingEvent) - so pro owner, ver
   // NotificationsService.sendRecordingReminders.
   lembrete_gravacao
@@ -185,6 +192,7 @@ model Account {
   projects            Project[]
   invites             Invite[]
   ratingQuestions     RatingQuestion[]
+  ratings             Rating[]
   notifications       Notification[]
   recordingEvents     RecordingEvent[]
   crewMembers         CrewMember[]
@@ -210,26 +218,30 @@ model Account {
 // AdminService.setUserStatus), distinto da suspensao dentro de uma agencia
 // especifica (Membership.status, ver AccountService.setMemberStatus).
 model User {
-  id                String     @id @default(uuid())
-  nome              String
-  email             String     @unique
+  id                   String             @id @default(uuid())
+  nome                 String
+  email                String             @unique
   // Opcional: contas criadas via login social (Google/Apple) nao tem senha local.
-  senha             String?
+  senha                String?
   // Identificadores de login social. Uma conta pode ter senha local e/ou
   // um ou ambos vinculados (login por qualquer um deles cai no mesmo User).
-  googleId          String?    @unique @map("google_id")
-  appleId           String?    @unique @map("apple_id")
-  avatarUrl         String?    @map("avatar_url")
-  role              UserRole   @default(owner)
-  status            UserStatus @default(ativo)
+  googleId             String?            @unique @map("google_id")
+  appleId              String?            @unique @map("apple_id")
+  avatarUrl            String?            @map("avatar_url")
+  role                 UserRole           @default(owner)
+  status               UserStatus         @default(ativo)
   // White label da agencia: logo e cor de destaque (hex) exibidos na tela do cliente
-  logoUrl           String?    @map("logo_url")
-  corDestaque       String?    @map("cor_destaque")
-  criadoEm          DateTime   @default(now()) @map("criado_em")
+  logoUrl              String?            @map("logo_url")
+  corDestaque          String?            @map("cor_destaque")
+  criadoEm             DateTime           @default(now()) @map("criado_em")
   // Null = ainda nao confirmou o email. Preenchido na hora da criacao para
   // contas via Google/Apple (o provider ja verificou), ou ao consumir um
   // EmailVerificationToken para contas via email/senha.
-  emailVerificadoEm DateTime?  @map("email_verificado_em")
+  emailVerificadoEm    DateTime?          @map("email_verificado_em")
+  // Preferencias de e-mail das notificacoes (ver NotificationEmailService).
+  emailResumoDiario    Boolean            @default(true) @map("email_resumo_diario")
+  emailImediato        Boolean            @default(true) @map("email_imediato")
+  emailTiposDesligados NotificationType[] @default([]) @map("email_tipos_desligados")
 
   memberships               Membership[]
   comments                  Comment[]
@@ -358,17 +370,17 @@ model Invite {
 // responsável são opcionais — a gravação pode ser lançada antes de ambos
 // estarem definidos.
 model RecordingEvent {
-  id          String    @id @default(uuid())
-  accountId   String    @map("account_id")
+  id          String             @id @default(uuid())
+  accountId   String             @map("account_id")
   titulo      String
   tipo        RecordingEventTipo @default(gravacao)
-  dataInicio  DateTime  @map("data_inicio")
-  dataFim     DateTime? @map("data_fim")
-  clienteId   String?   @map("cliente_id")
-  membroId    String?   @map("membro_id")
-  demandaId   String?   @map("demanda_id")
+  dataInicio  DateTime           @map("data_inicio")
+  dataFim     DateTime?          @map("data_fim")
+  clienteId   String?            @map("cliente_id")
+  membroId    String?            @map("membro_id")
+  demandaId   String?            @map("demanda_id")
   observacoes String?
-  criadoEm    DateTime  @default(now()) @map("criado_em")
+  criadoEm    DateTime           @default(now()) @map("criado_em")
 
   account       Account                    @relation(fields: [accountId], references: [id], onDelete: Cascade)
   cliente       Client?                    @relation(fields: [clienteId], references: [id], onDelete: SetNull)
@@ -514,28 +526,28 @@ model ProjectMember {
 }
 
 model Client {
-  id          String  @id @default(uuid())
-  nome        String
-  email       String?
+  id                   String  @id @default(uuid())
+  nome                 String
+  email                String?
   // Legenda exibida no modo "Preview Reels" da galeria publica
-  descricao   String?
+  descricao            String?
   // Foto do cliente (avatar), exibida no modo "Preview Reels"
-  fotoUrl     String? @map("foto_url")
-  accountId   String  @map("account_id")
+  fotoUrl              String? @map("foto_url")
+  accountId            String  @map("account_id")
   // Profissional (owner/editor) da agencia responsavel por este cliente.
   // Null quando ainda nao ha responsavel atribuido.
-  responsavelId String? @map("responsavel_id")
+  responsavelId        String? @map("responsavel_id")
   // Marca dados de exemplo criados no onboarding, para o usuario poder deletar
-  isExemplo   Boolean @default(false) @map("is_exemplo")
+  isExemplo            Boolean @default(false) @map("is_exemplo")
   // Marca propria do cliente (white-label revendido pela agencia): quando
   // setada, sobrepoe campo a campo o branding da agencia (User.logoUrl/
   // corDestaque) nos links publicos deste cliente - ver ClientsService e
   // PublicService.getProject/getPortfolio.
-  logoUrl     String? @map("logo_url")
-  corDestaque String? @map("cor_destaque")
+  logoUrl              String? @map("logo_url")
+  corDestaque          String? @map("cor_destaque")
   // Valores dos campos customizados definidos pela agencia. As chaves sao os
   // IDs de ClientField para que renomear um campo nao altere valores ja salvos.
-  camposPersonalizados Json? @map("campos_personalizados")
+  camposPersonalizados Json?   @map("campos_personalizados")
 
   account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
   responsavel     User?            @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
@@ -547,6 +559,7 @@ model Client {
   demandas        Demanda[]
   activities      ClientActivity[]
   files           ClientFile[]
+  ratings         Rating[]
 
   @@index([accountId])
   @@index([responsavelId])
@@ -631,16 +644,16 @@ model ClientFile {
 // Notas e checklists internos do CheckDay. `items` e um array JSON para que
 // uma nota seja atualizada atomica e completamente pelo frontend.
 model CheckDayNote {
-  id           String                    @id @default(uuid())
-  accountId    String                    @map("account_id")
-  authorId     String                    @map("author_id")
+  id           String                   @id @default(uuid())
+  accountId    String                   @map("account_id")
+  authorId     String                   @map("author_id")
   title        String
   body         String?
-  items        Json                      @default("[]")
-  imageUrl     String?                   @map("image_url")
+  items        Json                     @default("[]")
+  imageUrl     String?                  @map("image_url")
   visibilidade CheckDayNoteVisibilidade @default(equipe)
-  createdAt    DateTime                  @default(now()) @map("created_at")
-  updatedAt    DateTime                  @updatedAt @map("updated_at")
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   author  User    @relation(fields: [authorId], references: [id], onDelete: Restrict)
@@ -651,28 +664,29 @@ model CheckDayNote {
 }
 
 model Project {
-  id          String   @id @default(uuid())
-  nome        String
+  id            String   @id @default(uuid())
+  nome          String
   // Nulo no "projeto avulso": link de aprovacao para quem nao esta
   // cadastrado como cliente. O nome de quem recebe vai em contatoAvulso.
-  clientId    String?  @map("client_id")
-  contatoAvulso String? @map("contato_avulso")
-  accountId   String   @map("account_id")
-  isExemplo   Boolean  @default(false) @map("is_exemplo")
+  clientId      String?  @map("client_id")
+  contatoAvulso String?  @map("contato_avulso")
+  accountId     String   @map("account_id")
+  isExemplo     Boolean  @default(false) @map("is_exemplo")
   // Miniatura interna do projeto (card da lista, cabecalho do projeto). Nao
   // aparece na galeria publica: a PublicService monta a resposta do cliente
   // com selects explicitos, entao esta coluna nao vaza por la.
-  fotoUrl     String?  @map("foto_url")
+  fotoUrl       String?  @map("foto_url")
   // Link unico da galeria publica: todos os videos do projeto num so link,
   // para o cliente nao precisar entrar video por video (ver PublicService).
-  linkPublico String   @unique @default(uuid()) @map("link_publico")
-  criadoEm    DateTime @default(now()) @map("criado_em")
+  linkPublico   String   @unique @default(uuid()) @map("link_publico")
+  criadoEm      DateTime @default(now()) @map("criado_em")
 
-  client     Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  account    Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  videos     Video[]
-  members    ProjectMember[]
-  activities ClientActivity[]
+  client           Client?                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  account          Account                  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  videos           Video[]
+  ratings          Rating[]
+  members          ProjectMember[]
+  activities       ClientActivity[]
   googleDriveItems ProjectGoogleDriveItem[]
 
   @@index([clientId])
@@ -717,18 +731,18 @@ model Video {
   arquivoRemovidoEm   DateTime?           @map("arquivo_removido_em")
   criadoEm            DateTime            @default(now()) @map("criado_em")
 
-  project           Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  videoPai          Video?           @relation("VersionHistory", fields: [videoPaiId], references: [id], onDelete: SetNull)
-  versoes           Video[]          @relation("VersionHistory")
-  comments          Comment[]
-  ratings           Rating[]
-  notifications     Notification[]
-  portfolioVideos   PortfolioVideo[]
-  demandas          Demanda[]
-  activities        ClientActivity[]
-  labels            VideoLabel[]
-  collaborators     VideoCollaborator[]
-  responsaveis      VideoResponsavel[]
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  videoPai        Video?              @relation("VersionHistory", fields: [videoPaiId], references: [id], onDelete: SetNull)
+  versoes         Video[]             @relation("VersionHistory")
+  comments        Comment[]
+  ratings         Rating[]
+  notifications   Notification[]
+  portfolioVideos PortfolioVideo[]
+  demandas        Demanda[]
+  activities      ClientActivity[]
+  labels          VideoLabel[]
+  collaborators   VideoCollaborator[]
+  responsaveis    VideoResponsavel[]
 
   @@index([projectId])
   @@index([videoPaiId])
@@ -772,12 +786,13 @@ model Demanda {
   criadoEm      DateTime      @default(now()) @map("criado_em")
   atualizadoEm  DateTime      @updatedAt @map("atualizado_em")
 
-  account     Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  cliente     Client? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
-  responsavel User?   @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
-  video       Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  account         Account               @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cliente         Client?               @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  responsavel     User?                 @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
+  video           Video?                @relation(fields: [videoId], references: [id], onDelete: SetNull)
   recordingEvents RecordingEvent[]
   labels          DemandaLabel[]
+  notifications   Notification[]
   collaborators   DemandaCollaborator[]
 
   @@index([accountId])
@@ -790,12 +805,12 @@ model Demanda {
 // Labels compartilhadas por todos os membros de uma agencia. Nao pertencem
 // ao usuario que as criou: Account e o unico escopo de isolamento.
 model Label {
-  id        String     @id @default(uuid())
-  accountId String     @map("account_id")
-  text      String
-  color     LabelColor
-  criadoEm  DateTime   @default(now()) @map("criado_em")
-  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+  id           String     @id @default(uuid())
+  accountId    String     @map("account_id")
+  text         String
+  color        LabelColor
+  criadoEm     DateTime   @default(now()) @map("criado_em")
+  atualizadoEm DateTime   @updatedAt @map("atualizado_em")
 
   account  Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
   videos   VideoLabel[]
@@ -912,10 +927,10 @@ model Portfolio {
 // (ex.: "Casamento", "Institucional") - sem valores fixos. Excluir uma
 // categoria so desassocia os albuns dela (onDelete: SetNull em Portfolio.categoriaId).
 model PortfolioCategory {
-  id        String @id @default(uuid())
-  accountId String @map("account_id")
-  nome      String
-  ordem     Int    @default(0)
+  id           String   @id @default(uuid())
+  accountId    String   @map("account_id")
+  nome         String
+  ordem        Int      @default(0)
   // Capa propria da aba no hub publico. Null = o front cai no fallback
   // historico (capa do primeiro album da categoria), que fazia uma aba com
   // varios albuns aparecer com a cara do primeiro deles.
@@ -1020,18 +1035,33 @@ model Comment {
 
 model Rating {
   id               String   @id @default(uuid())
-  videoId          String   @map("video_id")
-  ratingQuestionId String   @map("rating_question_id")
+  accountId        String   @map("account_id")
+  // Nulo depois que o video (ou o projeto/cliente dele) e excluido: a nota
+  // continua valendo no relatorio de avaliacoes, so perde o link pro video.
+  videoId          String?  @map("video_id")
+  // Nulo = nota geral dada na aprovacao (ApproveVideoDto.notaGeral).
+  ratingQuestionId String?  @map("rating_question_id")
+  projectId        String?  @map("project_id")
+  clienteId        String?  @map("cliente_id")
+  // Copia dos nomes no momento da avaliacao, para o historico sobreviver a
+  // exclusao do video/projeto/cliente (ver ReportsService.ratings).
+  videoNome        String?  @map("video_nome")
+  projetoNome      String?  @map("projeto_nome")
+  clienteNome      String?  @map("cliente_nome")
   nota             Int
   criadoEm         DateTime @default(now()) @map("criado_em")
 
-  video          Video          @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  account        Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  video          Video?          @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  cliente        Client?         @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   // Restrict: nao deixa apagar uma pergunta que ja tem avaliacoes (o owner
   // deve desativa-la com `ativo: false` em vez de excluir).
-  ratingQuestion RatingQuestion @relation(fields: [ratingQuestionId], references: [id], onDelete: Restrict)
+  ratingQuestion RatingQuestion? @relation(fields: [ratingQuestionId], references: [id], onDelete: Restrict)
 
   @@index([videoId])
   @@index([ratingQuestionId])
+  @@index([accountId, criadoEm])
   @@map("ratings")
 }
 
@@ -1067,16 +1097,23 @@ model Notification {
   userId           String           @map("user_id")
   videoId          String?          @map("video_id")
   recordingEventId String?          @map("recording_event_id")
+  demandaId        String?          @map("demanda_id")
   type             NotificationType
   lida             Boolean          @default(false)
+  // Evita repetir o mesmo aviso gerado por cron (ex.: "prazo:<videoId>:<prazo>").
+  chave            String?
+  // Quando foi para o e-mail (na hora ou no resumo diario). Nulo = ainda nao.
+  emailEnviadoEm   DateTime?        @map("email_enviado_em")
   criadoEm         DateTime         @default(now()) @map("criado_em")
 
   account        Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   video          Video?          @relation(fields: [videoId], references: [id], onDelete: Cascade)
   recordingEvent RecordingEvent? @relation(fields: [recordingEventId], references: [id], onDelete: Cascade)
+  demanda        Demanda?        @relation(fields: [demandaId], references: [id], onDelete: Cascade)
 
   @@unique([recordingEventId, userId, type])
+  @@unique([userId, chave])
   @@index([userId, lida])
   @@index([accountId])
   @@index([videoId])

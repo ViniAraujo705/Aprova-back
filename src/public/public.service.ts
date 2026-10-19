@@ -368,7 +368,8 @@ export class PublicService {
           },
         }),
         this.prisma.rating.findMany({
-          where: { videoId: video.id },
+          // Sem a linha da nota geral (pergunta nula): ela ja vai em notaGeral.
+          where: { videoId: video.id, ratingQuestionId: { not: null } },
           orderBy: { criadoEm: 'asc' },
           select: {
             id: true,
@@ -621,7 +622,7 @@ export class PublicService {
 
     const rating = await this.prisma.rating.create({
       data: {
-        videoId: video.id,
+        ...this.ratingSnapshot(video),
         ratingQuestionId: dto.ratingQuestionId,
         nota: dto.nota,
       },
@@ -730,7 +731,54 @@ export class PublicService {
       });
     }
 
+    // A nota geral tambem entra no historico de avaliacoes (rating sem
+    // pergunta), que sobrevive a exclusao do video/projeto/cliente.
+    if (status === VideoStatus.aprovado && notaGeral) {
+      const geral = await this.prisma.rating.findFirst({
+        where: { videoId: video.id, ratingQuestionId: null },
+        select: { id: true },
+      });
+      if (geral) {
+        await this.prisma.rating.update({
+          where: { id: geral.id },
+          data: { nota: notaGeral },
+        });
+      } else {
+        await this.prisma.rating.create({
+          data: { ...this.ratingSnapshot(video), nota: notaGeral },
+        });
+      }
+    }
+
     return updated;
+  }
+
+  /**
+   * Conta/projeto/cliente e nomes copiados para a linha do rating: o
+   * relatorio de avaliacoes continua mostrando de quem era a nota mesmo
+   * depois que o video, o projeto ou o cliente forem excluidos.
+   */
+  private ratingSnapshot(video: {
+    id: string;
+    nomeArquivo: string;
+    projectId: string;
+    project: {
+      nome: string;
+      accountId: string;
+      clientId: string | null;
+      contatoAvulso: string | null;
+      client: { nome: string } | null;
+    };
+  }) {
+    return {
+      accountId: video.project.accountId,
+      videoId: video.id,
+      projectId: video.projectId,
+      clienteId: video.project.clientId,
+      videoNome: video.nomeArquivo,
+      projetoNome: video.project.nome,
+      clienteNome: video.project.client?.nome ?? video.project.contatoAvulso,
+    };
   }
 
   /**

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { EtapaProducao, UserRole, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateDemandaDto } from './dto/create-demanda.dto';
 import { UpdateDemandaDto } from './dto/update-demanda.dto';
 
@@ -45,9 +46,12 @@ function toDto(demanda: RawDemanda) {
 
 @Injectable()
 export class DemandasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
-  async create(accountId: string, dto: CreateDemandaDto) {
+  async create(accountId: string, dto: CreateDemandaDto, autorId: string) {
     await this.assertRefsBelongToAccount(accountId, dto);
     await this.assertKanbanRefsBelongToAccount(
       accountId,
@@ -77,6 +81,12 @@ export class DemandasService {
       },
       select: DEMANDA_SELECT,
     });
+    await this.notifications.notifyDemanda(
+      accountId,
+      demanda.id,
+      [demanda.responsavelId, ...demanda.collaborators.map((c) => c.userId)],
+      autorId,
+    );
     return toDto(demanda);
   }
 
@@ -89,8 +99,24 @@ export class DemandasService {
     return demandas.map(toDto);
   }
 
-  async update(accountId: string, id: string, dto: UpdateDemandaDto) {
+  async update(
+    accountId: string,
+    id: string,
+    dto: UpdateDemandaDto,
+    autorId: string,
+  ) {
     await this.getOwned(accountId, id);
+    const antes = await this.prisma.demanda.findUniqueOrThrow({
+      where: { id },
+      select: {
+        responsavelId: true,
+        collaborators: { select: { userId: true } },
+      },
+    });
+    const jaNaDemanda = new Set([
+      antes.responsavelId,
+      ...antes.collaborators.map((c) => c.userId),
+    ]);
     await this.assertRefsBelongToAccount(accountId, dto);
     await this.assertKanbanRefsBelongToAccount(
       accountId,
@@ -129,6 +155,17 @@ export class DemandasService {
       },
       select: DEMANDA_SELECT,
     });
+    // So quem entrou agora na demanda; a chave unica por demanda em
+    // notifyDemanda ainda evita repetir para quem saiu e voltou.
+    await this.notifications.notifyDemanda(
+      accountId,
+      demanda.id,
+      [
+        demanda.responsavelId,
+        ...demanda.collaborators.map((c) => c.userId),
+      ].filter((userId) => !jaNaDemanda.has(userId)),
+      autorId,
+    );
     return toDto(demanda);
   }
 

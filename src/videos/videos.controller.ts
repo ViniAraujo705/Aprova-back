@@ -174,7 +174,7 @@ export class VideosController {
   @Roles(UserRole.owner)
   @ApiOperation({
     summary:
-      'Owner exclui o video (comentarios e ratings sao removidos em cascata). Bloqueado com 409 se houver versoes filhas vinculadas.',
+      'Owner exclui o video (comentarios sao removidos em cascata; as notas ficam no historico de avaliacoes). Bloqueado com 409 se houver versoes filhas vinculadas.',
   })
   remove(
     @CurrentUser() user: AuthUser,
