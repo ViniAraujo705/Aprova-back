@@ -22,7 +22,7 @@ export class MailService {
     this.apiKey = this.config.get<string>('RESEND_API_KEY') || undefined;
     this.from =
       this.config.get<string>('MAIL_FROM') ??
-      'Vistoow <no-reply@checkprod.com.br>';
+      'Check <no-reply@vistoow.com.br>';
   }
 
   async send(to: string, subject: string, text: string): Promise<void> {

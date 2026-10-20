@@ -207,7 +207,7 @@ export class AuthService {
       try {
         await this.mail.send(
           user.email,
-          'Redefinicao de senha - Vistoow',
+          'Redefinição de senha - Check',
           `Recebemos um pedido para redefinir sua senha. Acesse o link abaixo (valido por 1 hora):\n${resetUrl}\n\nSe voce nao pediu isso, ignore este email.`,
         );
       } catch (err) {
@@ -476,8 +476,8 @@ export class AuthService {
       if (user.emailVerificadoEm) {
         await this.mail.send(
           user.email,
-          'Bem-vindo(a) ao Vistoow!',
-          `Ola, ${user.nome}!\n\nSua conta foi criada com sucesso. Bem-vindo(a) ao Vistoow.`,
+          'Bem-vindo(a) ao Check!',
+          `Ola, ${user.nome}!\n\nSua conta foi criada com sucesso. Bem-vindo(a) ao Check.`,
         );
         return;
       }
@@ -509,14 +509,14 @@ export class AuthService {
 
     const confirmUrl = this.buildConfirmUrl(verification.token);
     const intro = opts.welcome
-      ? `Ola, ${user.nome}!\n\nSua conta foi criada com sucesso. Bem-vindo(a) ao Vistoow.`
+      ? `Ola, ${user.nome}!\n\nSua conta foi criada com sucesso. Bem-vindo(a) ao Check.`
       : `Ola, ${user.nome}!`;
 
     await this.mail.send(
       user.email,
       opts.welcome
-        ? 'Bem-vindo(a) ao Vistoow!'
-        : 'Confirme seu email - Vistoow',
+        ? 'Bem-vindo(a) ao Check!'
+        : 'Confirme seu e-mail - Check',
       `${intro}\n\nConfirme seu email acessando o link abaixo (valido por 7 dias):\n${confirmUrl}`,
     );
   }

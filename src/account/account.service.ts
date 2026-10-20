@@ -357,8 +357,8 @@ export class AccountService {
     const inviteUrl = this.buildInviteUrl(invite.token);
     await this.mail.send(
       invite.email,
-      'Convite para colaborar na Vistoow',
-      `Voce foi convidado(a) para colaborar como editor na APROVA. Acesse o link abaixo para criar sua senha:\n${inviteUrl}`,
+      'Convite para colaborar no Check',
+      `Voce foi convidado(a) para colaborar como editor no Check. Acesse o link abaixo para criar sua senha:\n${inviteUrl}`,
     );
 
     // Devolve a linha inteira do convite (mesmo shape de listMembers) e nao
