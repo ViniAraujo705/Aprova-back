@@ -1049,6 +1049,8 @@ model Rating {
   projetoNome      String?  @map("projeto_nome")
   clienteNome      String?  @map("cliente_nome")
   nota             Int
+  // Recado opcional do cliente ao aprovar; so existe na linha da nota geral.
+  comentario       String?
   criadoEm         DateTime @default(now()) @map("criado_em")
 
   account        Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)

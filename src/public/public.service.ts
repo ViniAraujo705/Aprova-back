@@ -645,6 +645,7 @@ export class PublicService {
       linkPublico,
       VideoStatus.aprovado,
       dto.notaGeral,
+      dto.depoimento || null,
     );
     await this.notifications.notify(
       updated.id,
@@ -691,6 +692,7 @@ export class PublicService {
     linkPublico: string,
     status: VideoStatus,
     notaGeral?: number,
+    depoimento?: string | null,
   ) {
     const video = await this.resolveVideo(linkPublico);
     const etapaProducao = PublicService.ETAPA_BY_STATUS[status];
@@ -741,11 +743,15 @@ export class PublicService {
       if (geral) {
         await this.prisma.rating.update({
           where: { id: geral.id },
-          data: { nota: notaGeral },
+          data: { nota: notaGeral, comentario: depoimento ?? null },
         });
       } else {
         await this.prisma.rating.create({
-          data: { ...this.ratingSnapshot(video), nota: notaGeral },
+          data: {
+            ...this.ratingSnapshot(video),
+            nota: notaGeral,
+            comentario: depoimento ?? null,
+          },
         });
       }
     }

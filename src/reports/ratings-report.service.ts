@@ -34,6 +34,7 @@ export class RatingsReportService {
         select: {
           id: true,
           nota: true,
+          comentario: true,
           criadoEm: true,
           ratingQuestionId: true,
           videoId: true,
@@ -67,6 +68,7 @@ export class RatingsReportService {
       avaliacoes: ratings.map((r) => ({
         id: r.id,
         nota: r.nota,
+        comentario: r.comentario,
         criadoEm: r.criadoEm,
         ratingQuestionId: r.ratingQuestionId,
         videoId: r.videoId,
