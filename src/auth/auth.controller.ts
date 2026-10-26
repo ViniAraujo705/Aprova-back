@@ -78,7 +78,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Envia por email um link para redefinir a senha (valido por 1h). Resposta e sempre a mesma, exista ou nao o email.',
+      'Envia por email um link para redefinir a senha (valido por 1h). Retorna 404 se o email nao tiver conta.',
   })
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
