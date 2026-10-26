@@ -183,39 +183,39 @@ export class AuthService {
   }
 
   /**
-   * Gera um token de reset (valido por 1h) e envia por email. Sempre
-   * retorna a mesma resposta, exista ou nao o email na base - evita que o
-   * endpoint seja usado pra descobrir quais emails tem conta cadastrada.
+   * Gera um token de reset (valido por 1h) e envia por email. Retorna 404
+   * quando o email nao tem conta, para a tela avisar o usuario que digitou
+   * um email diferente do cadastrado.
    */
   async forgotPassword(dto: ForgotPasswordDto): Promise<{ sent: true }> {
     const user = await this.prisma.user.findFirst({
       where: { email: { equals: dto.email, mode: 'insensitive' } },
       select: { id: true, email: true },
     });
+    if (!user) {
+      throw new NotFoundException('Este e-mail não está cadastrado');
+    }
 
-    if (user) {
-      const resetToken = await this.prisma.passwordResetToken.create({
-        data: {
-          userId: user.id,
-          expiresEm: new Date(Date.now() + this.RESET_TOKEN_TTL_MS),
-        },
-        select: { token: true },
-      });
+    const resetToken = await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        expiresEm: new Date(Date.now() + this.RESET_TOKEN_TTL_MS),
+      },
+      select: { token: true },
+    });
 
-      const resetUrl = this.buildResetUrl(resetToken.token);
-      try {
-        await this.mail.send(
-          user.email,
-          'Redefinicao de senha - Vistoow',
-          `Recebemos um pedido para redefinir sua senha. Acesse o link abaixo (valido por 1 hora):\n${resetUrl}\n\nSe voce nao pediu isso, ignore este email.`,
-        );
-      } catch (err) {
-        // Nao propaga: a resposta ao cliente ja e generica e nao deve
-        // revelar se o envio falhou (ex.: dominio de email invalido).
-        this.logger.warn(
-          `Falha ao enviar email de reset para ${user.email}: ${(err as Error).message}`,
-        );
-      }
+    const resetUrl = this.buildResetUrl(resetToken.token);
+    try {
+      await this.mail.send(
+        user.email,
+        'Redefinicao de senha - Vistoow',
+        `Recebemos um pedido para redefinir sua senha. Acesse o link abaixo (valido por 1 hora):\n${resetUrl}\n\nSe voce nao pediu isso, ignore este email.`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao enviar email de reset para ${user.email}: ${(err as Error).message}`,
+      );
+      throw err;
     }
 
     return { sent: true };
