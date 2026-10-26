@@ -45,8 +45,8 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto, meta: SessionMeta) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    const existing = await this.prisma.user.findFirst({
+      where: { email: { equals: dto.email, mode: 'insensitive' } },
     });
     if (existing) {
       throw new ConflictException('Ja existe uma conta com este email');
@@ -64,8 +64,8 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, meta: SessionMeta) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: dto.email, mode: 'insensitive' } },
     });
 
     if (!user?.senha || !(await bcrypt.compare(dto.senha, user.senha))) {
@@ -188,8 +188,8 @@ export class AuthService {
    * endpoint seja usado pra descobrir quais emails tem conta cadastrada.
    */
   async forgotPassword(dto: ForgotPasswordDto): Promise<{ sent: true }> {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: dto.email, mode: 'insensitive' } },
       select: { id: true, email: true },
     });
 
@@ -310,8 +310,8 @@ export class AuthService {
   async resendConfirmation(
     dto: ResendConfirmationDto,
   ): Promise<{ sent: true }> {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: dto.email, mode: 'insensitive' } },
       select: { id: true, nome: true, email: true, emailVerificadoEm: true },
     });
 
