@@ -109,8 +109,8 @@ Resposta `201`:
   "user": {
     "id": "...", "nome": "Maria Silva", "email": "maria@agencia.com", "teamRole": "owner", "status": "ativo", "accountId": "...",
     "fotoUrl": null,
-    "logoUrl": null, "corDestaque": null, "nomeAgencia": "Agência Maria",
-    "branding": { "logoUrl": null, "corDestaque": null, "nomeAgencia": "Agência Maria" },
+    "logoUrl": null, "corDestaque": null, "corSecundaria": null, "nomeAgencia": "Agência Maria",
+    "branding": { "logoUrl": null, "corDestaque": null, "corSecundaria": null, "nomeAgencia": "Agência Maria" },
     "criadoEm": "...", "emailVerificado": false
   },
   "access_token": "eyJhbGciOi..."
@@ -118,14 +118,14 @@ Resposta `201`:
 ```
 Erros: `409` se já existe conta com o email.
 
-> `logoUrl`/`corDestaque`/`nomeAgencia` são o branding (white label) da
+> `logoUrl`/`corDestaque`/`corSecundaria`/`nomeAgencia` são o branding (white label) da
 > agência — ver [Branding / white label](#branding--white-label-usersme).
 > Vêm em toda resposta de autenticação (`register`, `login`, `google`,
 > `apple`, `select-account`, `account/invite/:token/accept`) e também em
 > `GET /users/me`, então o frontend não precisa de uma chamada extra só pra
 > pintar a cor/logo depois do login — inclusive ao trocar de dispositivo ou
 > reabrir uma sessão. O mesmo trio também vem agrupado em `user.branding`
-> (`{ logoUrl, corDestaque, nomeAgencia }`), redundante com os campos soltos
+> (`{ logoUrl, corDestaque, corSecundaria, nomeAgencia }`), redundante com os campos soltos
 > — use o que for mais conveniente no client, os dois sempre têm o mesmo
 > valor. **Resolvido pelo `owner` da conta ativa**, não pelo usuário que
 > está logando — um `editor` vê o branding configurado pelo `owner` da
@@ -339,17 +339,17 @@ do branding da agência) — `403` se o plano não incluir.
 | Método | Rota | Body | Retorno |
 |---|---|---|---|
 | `POST` | `/clients/:id/branding/logo-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
-| `PATCH` | `/clients/:id/branding` | `{ logoUrl?, corDestaque? }` | `{ logoUrl, corDestaque }` |
+| `PATCH` | `/clients/:id/branding` | `{ logoUrl?, corDestaque?, corSecundaria? }` | `{ logoUrl, corDestaque, corSecundaria }` |
 
 `contentType` aceito: `image/png`, `image/jpeg`, `image/webp`,
 `image/svg+xml`. Mesmo fluxo de presigned URL do branding da agência (`PUT`
-direto no R2), só que na pasta `client-branding`. `corDestaque` é hex
-(`#RGB` ou `#RRGGBB`). Em `PATCH`, `logoUrl: null` / `corDestaque: null`
+direto no R2), só que na pasta `client-branding`. `corDestaque` (cor primária) e
+`corSecundaria` são hex (`#RGB` ou `#RRGGBB`). Em `PATCH`, `logoUrl: null` / `corDestaque: null` / `corSecundaria: null`
 limpa o respectivo campo (o cliente volta a herdar o branding da agência);
 campo ausente no body deixa como está.
 
 `Client.branding` (exposto em `GET /clients`, `GET /clients/:id`,
-`PATCH /clients/:id`): `{ logoUrl, corDestaque } | null` — `null` quando o
+`PATCH /clients/:id`): `{ logoUrl, corDestaque, corSecundaria } | null` — `null` quando o
 cliente não tem nenhuma marca própria configurada (caso mais comum). Esse
 mesmo objeto aparece em `cliente.branding` nas rotas públicas
 ([Galeria pública do projeto](#get-publicprojectslinkpublico) e
@@ -1025,7 +1025,7 @@ Resposta:
   - `404` se o convite já foi usado/não existe/foi cancelado. `410 Gone` se
     o convite existe e está `pendente` mas `expiresAt` já passou.
   - `user` na resposta inclui o branding da agência do convite
-    (`logoUrl`/`corDestaque`/`nomeAgencia` soltos + `user.branding`), mesmo
+    (`logoUrl`/`corDestaque`/`corSecundaria`/`nomeAgencia` soltos + `user.branding`), mesmo
     shape de `login`/`register` — ver nota em
     [`POST /auth/register`](#post-authregister).
 - `cancelInvite`: `:id` é o id do convite (mesmo `id` retornado por
@@ -1133,13 +1133,13 @@ Autenticado — qualquer role (`owner`, `editor`, `admin`).
 ```json
 {
   "id": "...", "nome": "...", "email": "...", "teamRole": "owner", "status": "ativo", "accountId": "...", "fotoUrl": "...",
-  "logoUrl": "...", "corDestaque": "#1E90FF", "nomeAgencia": "Agência Maria",
-  "branding": { "logoUrl": "...", "corDestaque": "#1E90FF", "nomeAgencia": "Agência Maria" },
+  "logoUrl": "...", "corDestaque": "#1E90FF", "corSecundaria": "#3B1F4A", "nomeAgencia": "Agência Maria",
+  "branding": { "logoUrl": "...", "corDestaque": "#1E90FF", "corSecundaria": "#3B1F4A", "nomeAgencia": "Agência Maria" },
   "criadoEm": "...", "emailVerificado": true
 }
 ```
 Use este endpoint pra restaurar logo/cor/nome da agência num refresh de
-página — o mesmo shape (`logoUrl`/`corDestaque`/`nomeAgencia` soltos e
+página — o mesmo shape (`logoUrl`/`corDestaque`/`corSecundaria`/`nomeAgencia` soltos e
 agrupados em `branding`) já vem em
 `register`/`login`/`google`/`apple`/`select-account`/
 `account/invite/:token/accept`, então na maioria dos casos não precisa
@@ -1181,12 +1181,12 @@ Autenticado — **somente `owner`**.
 | Método | Rota | Body | Retorno |
 |---|---|---|---|
 | `POST` | `/users/me/branding/logo-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
-| `PATCH` | `/users/me/branding` | `{ nome?, logoUrl?, corDestaque? }` | `{ id, nome, logoUrl, corDestaque, nomeAgencia }` |
+| `PATCH` | `/users/me/branding` | `{ nome?, logoUrl?, corDestaque?, corSecundaria? }` | `{ id, nome, logoUrl, corDestaque, corSecundaria, nomeAgencia }` |
 
 `contentType` aceito: `image/png`, `image/jpeg`, `image/webp`,
 `image/svg+xml`. Mesmo fluxo de presigned URL dos vídeos (`PUT` direto no
-R2), só que na pasta `branding`. `corDestaque` é hex (`#RGB` ou `#RRGGBB`).
-Esse branding (`logoUrl`/`corDestaque`/`nomeAgencia`) é o que aparece para o
+R2), só que na pasta `branding`. `corDestaque` (cor primária) e `corSecundaria` são hex (`#RGB` ou `#RRGGBB`).
+Esse branding (`logoUrl`/`corDestaque`/`corSecundaria`/`nomeAgencia`) é o que aparece para o
 **cliente** em `GET /public/videos/:linkPublico` (campo `agencia`).
 
 > ⚠️ **Atenção ao nome do campo**: o body aceita `nome` para atualizar o
@@ -1291,7 +1291,7 @@ free atingido..."). Isso acontece em:
 - `POST /rating-questions` — limite de perguntas (`maxRatingQuestions`)
 - `POST /recording-events` — exige `recordingManagement` diferente de
   `"none"`
-- `PATCH /users/me/branding` (quando envia `logoUrl` ou `corDestaque`) —
+- `PATCH /users/me/branding` (quando envia `logoUrl`, `corDestaque` ou `corSecundaria`) —
   exige `whiteLabel`
 - `GET /projects/:id/report` — exige `reports` diferente de `"none"`
 - `GET /team/performance` — exige `teamPerformance` (só plano `agencia`)
@@ -1601,8 +1601,8 @@ Resposta:
 ```json
 {
   "projeto": { "nome": "Campanha Verão" },
-  "cliente": { "nome": "Cliente A", "branding": { "logoUrl": "https://... ou null", "corDestaque": "#d6336c ou null" } },
-  "agencia": { "nome": "Agência Maria", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
+  "cliente": { "nome": "Cliente A", "branding": { "logoUrl": "https://... ou null", "corDestaque": "#d6336c ou null", "corSecundaria": "#3b1f4a ou null" } },
+  "agencia": { "nome": "Agência Maria", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null", "corSecundaria": "#3B1F4A ou null" },
   "videos": [
     {
       "id": "uuid",
@@ -1637,7 +1637,7 @@ front usa isso pra esconder a versão antiga da galeria. `404` se
 `null` quando o cliente não tem nenhuma marca própria configurada (caso
 mais comum — cai só no branding da agência). Quando presente, o frontend
 faz o merge campo a campo: `cliente.branding.logoUrl ?? agencia.logoUrl`,
-`cliente.branding.corDestaque ?? agencia.corDestaque` (a marca do cliente
+`cliente.branding.corDestaque ?? agencia.corDestaque` (idem `corSecundaria`) (a marca do cliente
 pode setar só o logo, só a cor, ou os dois).
 
 ### `POST /public/projects/:linkPublico/download`
@@ -1715,8 +1715,8 @@ Resposta:
 {
   "nome": "Reels para redes sociais",
   "descricao": "Seleção de reels de curta duração... ou null",
-  "cliente": { "branding": { "logoUrl": "https://... ou null", "corDestaque": "#d6336c ou null" } },
-  "agencia": { "nome": "Agencia Teste", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
+  "cliente": { "branding": { "logoUrl": "https://... ou null", "corDestaque": "#d6336c ou null", "corSecundaria": "#3b1f4a ou null" } },
+  "agencia": { "nome": "Agencia Teste", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null", "corSecundaria": "#3B1F4A ou null" },
   "videos": [
     { "id": "uuid", "tipoMidia": "video", "titulo": "Reel lançamento batom matte", "descricao": "... ou null", "urlStorage": "https://...", "posterUrl": "https://... ou null", "statusProcessamento": "pronto", "ordem": 0, "criadoEm": "..." },
     { "id": "uuid", "tipoMidia": "foto", "titulo": "Still campanha", "descricao": null, "urlStorage": null, "posterUrl": "https://...", "statusProcessamento": "pronto", "ordem": 1, "criadoEm": "..." }
@@ -1737,7 +1737,7 @@ contrário vem `null`. Propositalmente **nunca** expõe `nome`/`id` do
 cliente — essa rota é a vitrine pública, e não deve revelar pra quem o
 álbum foi personalizado, só mudar a marca visual. Merge fica a cargo do
 frontend, igual à galeria pública do projeto: `cliente.branding.logoUrl ??
-agencia.logoUrl`, `cliente.branding.corDestaque ?? agencia.corDestaque`.
+agencia.logoUrl`, `cliente.branding.corDestaque ?? agencia.corDestaque` (idem `corSecundaria`).
 
 ### Hub público do portfólio
 
@@ -1751,7 +1751,7 @@ Resposta:
 ```json
 {
   "fotoUrl": "https://... ou null",
-  "agencia": { "nome": "Agencia Teste", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
+  "agencia": { "nome": "Agencia Teste", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null", "corSecundaria": "#3B1F4A ou null" },
   "categorias": [
     {
       "id": "uuid",
@@ -1810,7 +1810,7 @@ Resposta:
   "criadoEm": "...",
   "projeto": { "nome": "Campanha Verão" },
   "cliente": { "nome": "Cliente A", "descricao": "... ou null", "fotoUrl": "https://... ou null" },
-  "agencia": { "nome": "Agência Maria", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null" },
+  "agencia": { "nome": "Agência Maria", "logoUrl": "https://... ou null", "corDestaque": "#1E90FF ou null", "corSecundaria": "#3B1F4A ou null" },
   "comments": [
     { "id": "...", "timestampVideo": 12, "texto": "... ou null (comentário só de áudio)", "audioUrl": "https://... ou null", "autorType": "cliente", "autorNome": "Fulano", "autorUser": null, "parentId": null, "criadoEm": "...", "isAgencyReply": false }
   ],

@@ -233,6 +233,7 @@ model User {
   // White label da agencia: logo e cor de destaque (hex) exibidos na tela do cliente
   logoUrl              String?            @map("logo_url")
   corDestaque          String?            @map("cor_destaque")
+  corSecundaria        String?            @map("cor_secundaria")
   criadoEm             DateTime           @default(now()) @map("criado_em")
   // Null = ainda nao confirmou o email. Preenchido na hora da criacao para
   // contas via Google/Apple (o provider ja verificou), ou ao consumir um
@@ -545,6 +546,7 @@ model Client {
   // PublicService.getProject/getPortfolio.
   logoUrl              String? @map("logo_url")
   corDestaque          String? @map("cor_destaque")
+  corSecundaria        String? @map("cor_secundaria")
   // Valores dos campos customizados definidos pela agencia. As chaves sao os
   // IDs de ClientField para que renomear um campo nao altere valores ja salvos.
   camposPersonalizados Json?   @map("campos_personalizados")
