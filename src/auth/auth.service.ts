@@ -584,10 +584,12 @@ export class AuthService {
         accountId,
         logoUrl: ownerBranding.logoUrl,
         corDestaque: ownerBranding.corDestaque,
+        corSecundaria: ownerBranding.corSecundaria,
         nomeAgencia,
         branding: {
           logoUrl: ownerBranding.logoUrl,
           corDestaque: ownerBranding.corDestaque,
+          corSecundaria: ownerBranding.corSecundaria,
           nomeAgencia,
         },
         criadoEm: user.criadoEm,

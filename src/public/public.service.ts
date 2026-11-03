@@ -50,7 +50,7 @@ export class PublicService {
       select: {
         nome: true,
         client: {
-          select: { nome: true, logoUrl: true, corDestaque: true },
+          select: { nome: true, logoUrl: true, corDestaque: true, corSecundaria: true },
         },
         account: {
           select: {
@@ -58,7 +58,7 @@ export class PublicService {
             memberships: {
               where: { role: UserRole.owner },
               select: {
-                user: { select: { logoUrl: true, corDestaque: true } },
+                user: { select: { logoUrl: true, corDestaque: true, corSecundaria: true } },
               },
               orderBy: { criadoEm: 'asc' },
               take: 1,
@@ -98,6 +98,7 @@ export class PublicService {
         nome: project.account.nomeAgencia,
         logoUrl: project.account.memberships[0]?.user.logoUrl ?? null,
         corDestaque: project.account.memberships[0]?.user.corDestaque ?? null,
+        corSecundaria: project.account.memberships[0]?.user.corSecundaria ?? null,
       },
       // Uma cadeia de versões representa uma única entrega para o cliente.
       // A galeria pública mostra só a ponta atual de cada cadeia; as linhas
@@ -130,14 +131,14 @@ export class PublicService {
         // So o branding do cliente etiquetado (Portfolio.clienteId) - nome/id
         // do cliente NUNCA sao expostos aqui (vitrine publica nao deve
         // revelar pra quem o album foi personalizado, so a marca visual).
-        cliente: { select: { logoUrl: true, corDestaque: true } },
+        cliente: { select: { logoUrl: true, corDestaque: true, corSecundaria: true } },
         account: {
           select: {
             nomeAgencia: true,
             memberships: {
               where: { role: UserRole.owner },
               select: {
-                user: { select: { logoUrl: true, corDestaque: true } },
+                user: { select: { logoUrl: true, corDestaque: true, corSecundaria: true } },
               },
               orderBy: { criadoEm: 'asc' },
               take: 1,
@@ -179,6 +180,7 @@ export class PublicService {
         nome: portfolio.account.nomeAgencia,
         logoUrl: portfolio.account.memberships[0]?.user.logoUrl ?? null,
         corDestaque: portfolio.account.memberships[0]?.user.corDestaque ?? null,
+        corSecundaria: portfolio.account.memberships[0]?.user.corSecundaria ?? null,
       },
       videos: portfolio.videos.map((v) => ({
         id: v.id,
@@ -212,7 +214,7 @@ export class PublicService {
             memberships: {
               where: { role: UserRole.owner },
               select: {
-                user: { select: { logoUrl: true, corDestaque: true } },
+                user: { select: { logoUrl: true, corDestaque: true, corSecundaria: true } },
               },
               orderBy: { criadoEm: 'asc' },
               take: 1,
@@ -278,6 +280,7 @@ export class PublicService {
         nome: profile.account.nomeAgencia,
         logoUrl: profile.account.memberships[0]?.user.logoUrl ?? null,
         corDestaque: profile.account.memberships[0]?.user.corDestaque ?? null,
+        corSecundaria: profile.account.memberships[0]?.user.corSecundaria ?? null,
       },
       categorias,
     };
@@ -411,6 +414,8 @@ export class PublicService {
         logoUrl: video.project.account.memberships[0]?.user.logoUrl ?? null,
         corDestaque:
           video.project.account.memberships[0]?.user.corDestaque ?? null,
+        corSecundaria:
+          video.project.account.memberships[0]?.user.corSecundaria ?? null,
       },
       // Canal ja filtrado para "cliente": isAgencyReply so distingue a
       // resposta do owner (autorType owner) da mensagem do proprio cliente.
@@ -686,16 +691,21 @@ export class PublicService {
   }
 
   /**
-   * Marca propria do cliente ({ logoUrl, corDestaque }), ou null quando o
+   * Marca propria do cliente ({ logoUrl, corDestaque, corSecundaria }), ou null quando o
    * cliente nao tem nenhum campo configurado - nesse caso o frontend cai
    * de volta no branding da agencia (merge campo a campo).
    */
   private clientBranding(client: {
     logoUrl: string | null;
     corDestaque: string | null;
+    corSecundaria: string | null;
   }) {
-    return client.logoUrl || client.corDestaque
-      ? { logoUrl: client.logoUrl, corDestaque: client.corDestaque }
+    return client.logoUrl || client.corDestaque || client.corSecundaria
+      ? {
+          logoUrl: client.logoUrl,
+          corDestaque: client.corDestaque,
+          corSecundaria: client.corSecundaria,
+        }
       : null;
   }
 
@@ -857,7 +867,7 @@ export class PublicService {
                 memberships: {
                   where: { role: UserRole.owner },
                   select: {
-                    user: { select: { logoUrl: true, corDestaque: true } },
+                    user: { select: { logoUrl: true, corDestaque: true, corSecundaria: true } },
                   },
                   orderBy: { criadoEm: 'asc' },
                   take: 1,

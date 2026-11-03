@@ -24,4 +24,17 @@ export class UpdateClientBrandingDto {
     message: 'corDestaque deve ser um hex válido, ex.: #1E90FF',
   })
   corDestaque?: string | null;
+
+  // Mesma regra do corDestaque: null limpa (volta a herdar da agencia),
+  // ausente deixa como esta.
+  @ApiPropertyOptional({
+    description:
+      'Cor secundaria propria do cliente em hex, ex.: #3b1f4a. null limpa (volta a herdar da agencia).',
+    example: '#3b1f4a',
+  })
+  @IsOptional()
+  @Matches(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, {
+    message: 'corSecundaria deve ser um hex válido, ex.: #3B1F4A',
+  })
+  corSecundaria?: string | null;
 }

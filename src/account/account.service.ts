@@ -177,10 +177,12 @@ export class AccountService {
         // `user` identico ao de login/register/select-account.
         logoUrl: ownerBranding.logoUrl,
         corDestaque: ownerBranding.corDestaque,
+        corSecundaria: ownerBranding.corSecundaria,
         nomeAgencia: account.nomeAgencia,
         branding: {
           logoUrl: ownerBranding.logoUrl,
           corDestaque: ownerBranding.corDestaque,
+          corSecundaria: ownerBranding.corSecundaria,
           nomeAgencia: account.nomeAgencia,
         },
         criadoEm: user.criadoEm,
