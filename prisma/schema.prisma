@@ -186,6 +186,9 @@ model Account {
   // Asaas em caso de chamado (a API nao permite consultar checkout por id).
   asaasCheckoutId     String?  @map("asaas_checkout_id")
   criadoEm            DateTime @default(now()) @map("criado_em")
+  // Cor de cada tipo de evento do calendario ({ [RecordingEventTipo]: '#hex' }),
+  // so os personalizados - ver CalendarColorsService.
+  coresCalendario     Json?    @map("cores_calendario")
 
   memberships         Membership[]
   clients             Client[]
