@@ -22,7 +22,11 @@ export async function resolveOwnerBranding(
   const ownerMembership = await prisma.membership.findFirst({
     where: { accountId, role: UserRole.owner },
     orderBy: { criadoEm: 'asc' },
-    select: { user: { select: { logoUrl: true, corDestaque: true, corSecundaria: true } } },
+    select: {
+      user: {
+        select: { logoUrl: true, corDestaque: true, corSecundaria: true },
+      },
+    },
   });
 
   return {
