@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AccountController } from './account.controller';
 import { AccountService } from './account.service';
+import { CalendarColorsService } from './calendar-colors.service';
 import { SessionsModule } from '../sessions/sessions.module';
 import { PlansModule } from '../plans/plans.module';
 import type { StringValue } from 'ms';
@@ -26,6 +27,6 @@ import type { StringValue } from 'ms';
     }),
   ],
   controllers: [AccountController],
-  providers: [AccountService],
+  providers: [AccountService, CalendarColorsService],
 })
 export class AccountModule {}

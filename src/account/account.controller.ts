@@ -24,6 +24,8 @@ import {
   AuthUser,
 } from '../auth/decorators/current-user.decorator';
 import { AccountService } from './account.service';
+import { CalendarColorsService } from './calendar-colors.service';
+import { UpdateCalendarColorsDto } from './dto/update-calendar-colors.dto';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { UpdateMemberStatusDto } from './dto/update-member-status.dto';
@@ -37,7 +39,34 @@ export class AccountController {
   constructor(
     private readonly accountService: AccountService,
     private readonly sessionsService: SessionsService,
+    private readonly calendarColors: CalendarColorsService,
   ) {}
+
+  @Get('calendar-colors')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary:
+      'Cores personalizadas dos tipos de evento do calendario da conta (qualquer membro).',
+  })
+  getCalendarColors(@CurrentUser() user: AuthUser) {
+    return this.calendarColors.get(user.accountId);
+  }
+
+  @Patch('calendar-colors')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner)
+  @ApiOperation({
+    summary:
+      'Owner define a cor de cada tipo de evento do calendario. null volta ao padrao.',
+  })
+  updateCalendarColors(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateCalendarColorsDto,
+  ) {
+    return this.calendarColors.update(user.accountId, dto);
+  }
 
   @Post('invite')
   @ApiBearerAuth()

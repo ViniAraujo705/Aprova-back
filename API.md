@@ -1432,6 +1432,20 @@ Erros: `400` se `clienteId` não corresponder a um `Client` da mesma conta,
 `equipeIds` a um `CrewMember` da mesma conta · `404` se `:id` do evento não
 existir ou não pertencer à conta.
 
+### Cores dos tipos de evento (`/account/calendar-colors`)
+
+| Método | Rota | Body | Resposta |
+|---|---|---|---|
+| `GET` | `/account/calendar-colors` | — | `{ [tipo]: "#hex" }` |
+| `PATCH` | `/account/calendar-colors` | `{ gravacao?, captacao?, ensaio?, reuniao?, entrega?, prazo?, evento?, demanda_interna? }` | `{ [tipo]: "#hex" }` |
+
+Cor personalizada de cada `tipo` de evento, por conta (o calendário é
+compartilhado pela equipe). A resposta só traz os tipos personalizados —
+tipo ausente usa a cor padrão do sistema; conta sem nada devolve `{}`.
+`GET` é aberto a qualquer membro; `PATCH` só para `owner`. No `PATCH`,
+cada valor é hex (`#RGB` ou `#RRGGBB`), `null` volta o tipo ao padrão e
+tipo ausente no body fica como está. Tipo inexistente → `400`.
+
 ---
 
 ## Equipe de gravação (`/crew`)
