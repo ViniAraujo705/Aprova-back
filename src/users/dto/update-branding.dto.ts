@@ -35,4 +35,15 @@ export class UpdateBrandingDto {
     message: 'corDestaque deve ser um hex válido, ex.: #1E90FF',
   })
   corDestaque?: string;
+
+  @ApiPropertyOptional({
+    description: 'Cor secundária em hex, ex.: #3B1F4A. null limpa.',
+    example: '#3B1F4A',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, {
+    message: 'corSecundaria deve ser um hex válido, ex.: #3B1F4A',
+  })
+  corSecundaria?: string | null;
 }

@@ -78,9 +78,8 @@ export class ClientsService {
         // nunca ha upsert compartilhado por ID de ClientField.
         ...(camposPersonalizados !== undefined
           ? {
-              camposPersonalizados: this.normalizeCustomFields(
-                camposPersonalizados,
-              ),
+              camposPersonalizados:
+                this.normalizeCustomFields(camposPersonalizados),
             }
           : {}),
       },
@@ -188,7 +187,11 @@ export class ClientsService {
     dto: UpdateClientBrandingDto,
   ) {
     await this.findOwnedClient(accountId, id);
-    if (dto.logoUrl !== undefined || dto.corDestaque !== undefined) {
+    if (
+      dto.logoUrl !== undefined ||
+      dto.corDestaque !== undefined ||
+      dto.corSecundaria !== undefined
+    ) {
       await this.plans.assertFeature(accountId, 'whiteLabel');
     }
 
@@ -199,8 +202,11 @@ export class ClientsService {
         ...(dto.corDestaque !== undefined
           ? { corDestaque: dto.corDestaque }
           : {}),
+        ...(dto.corSecundaria !== undefined
+          ? { corSecundaria: dto.corSecundaria }
+          : {}),
       },
-      select: { logoUrl: true, corDestaque: true },
+      select: { logoUrl: true, corDestaque: true, corSecundaria: true },
     });
     return client;
   }
@@ -272,12 +278,16 @@ export class ClientsService {
   }
 
   private toResponse(client: Client) {
-    const { logoUrl, corDestaque, ...rest } = client;
+    const { logoUrl, corDestaque, corSecundaria, ...rest } = client;
     return {
       ...rest,
       branding:
-        logoUrl || corDestaque
-          ? { logoUrl: logoUrl ?? null, corDestaque: corDestaque ?? null }
+        logoUrl || corDestaque || corSecundaria
+          ? {
+              logoUrl: logoUrl ?? null,
+              corDestaque: corDestaque ?? null,
+              corSecundaria: corSecundaria ?? null,
+            }
           : null,
     };
   }

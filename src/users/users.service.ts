@@ -54,10 +54,12 @@ export class UsersService {
       accountId,
       logoUrl: ownerBranding.logoUrl,
       corDestaque: ownerBranding.corDestaque,
+      corSecundaria: ownerBranding.corSecundaria,
       nomeAgencia: account.nomeAgencia,
       branding: {
         logoUrl: ownerBranding.logoUrl,
         corDestaque: ownerBranding.corDestaque,
+        corSecundaria: ownerBranding.corSecundaria,
         nomeAgencia: account.nomeAgencia,
       },
       emailVerificado: Boolean(emailVerificadoEm),
@@ -149,7 +151,11 @@ export class UsersService {
     accountId: string,
     dto: UpdateBrandingDto,
   ) {
-    if (dto.logoUrl !== undefined || dto.corDestaque !== undefined) {
+    if (
+      dto.logoUrl !== undefined ||
+      dto.corDestaque !== undefined ||
+      dto.corSecundaria !== undefined
+    ) {
       await this.plans.assertFeature(accountId, 'whiteLabel');
     }
 
@@ -161,8 +167,17 @@ export class UsersService {
           ...(dto.corDestaque !== undefined
             ? { corDestaque: dto.corDestaque }
             : {}),
+          ...(dto.corSecundaria !== undefined
+            ? { corSecundaria: dto.corSecundaria }
+            : {}),
         },
-        select: { id: true, nome: true, logoUrl: true, corDestaque: true },
+        select: {
+          id: true,
+          nome: true,
+          logoUrl: true,
+          corDestaque: true,
+          corSecundaria: true,
+        },
       }),
       dto.nome !== undefined
         ? this.prisma.account.update({

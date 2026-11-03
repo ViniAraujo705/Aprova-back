@@ -14,15 +14,24 @@ import { PrismaService } from '../prisma/prisma.service';
 export async function resolveOwnerBranding(
   prisma: PrismaService,
   accountId: string,
-): Promise<{ logoUrl: string | null; corDestaque: string | null }> {
+): Promise<{
+  logoUrl: string | null;
+  corDestaque: string | null;
+  corSecundaria: string | null;
+}> {
   const ownerMembership = await prisma.membership.findFirst({
     where: { accountId, role: UserRole.owner },
     orderBy: { criadoEm: 'asc' },
-    select: { user: { select: { logoUrl: true, corDestaque: true } } },
+    select: {
+      user: {
+        select: { logoUrl: true, corDestaque: true, corSecundaria: true },
+      },
+    },
   });
 
   return {
     logoUrl: ownerMembership?.user.logoUrl ?? null,
     corDestaque: ownerMembership?.user.corDestaque ?? null,
+    corSecundaria: ownerMembership?.user.corSecundaria ?? null,
   };
 }
