@@ -267,7 +267,10 @@ export class AccountService {
 
     const existingMembership = await this.prisma.membership.findUnique({
       where: {
-        userId_accountId: { userId: existingUser.id, accountId: invite.accountId },
+        userId_accountId: {
+          userId: existingUser.id,
+          accountId: invite.accountId,
+        },
       },
       select: { id: true, status: true },
     });

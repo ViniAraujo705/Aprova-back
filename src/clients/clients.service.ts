@@ -78,9 +78,8 @@ export class ClientsService {
         // nunca ha upsert compartilhado por ID de ClientField.
         ...(camposPersonalizados !== undefined
           ? {
-              camposPersonalizados: this.normalizeCustomFields(
-                camposPersonalizados,
-              ),
+              camposPersonalizados:
+                this.normalizeCustomFields(camposPersonalizados),
             }
           : {}),
       },
