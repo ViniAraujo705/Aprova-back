@@ -6,10 +6,20 @@ import { createWithUniqueSlugField } from '../common/short-id.util';
 import { UpdatePortfolioProfileDto } from './dto/update-portfolio-profile.dto';
 import { PortfolioProfilePhotoUploadUrlDto } from './dto/photo-upload-url.dto';
 
+/** "instagram.com/x" -> "https://instagram.com/x"; mantem http(s)/mailto/tel. */
+function withScheme(url: string): string {
+  return /^(?:https?|mailto|tel):/i.test(url)
+    ? url
+    : `https://${url.replace(/^\/+/, '')}`;
+}
+
 const PROFILE_SELECT = {
   fotoUrl: true,
   linkHub: true,
   templateId: true,
+  capaUrl: true,
+  bio: true,
+  links: true,
 } as const;
 
 @Injectable()
@@ -88,9 +98,24 @@ export class PortfolioProfileService {
     await this.getOrCreate(accountId);
     return this.prisma.portfolioProfile.update({
       where: { accountId },
-      data: dto,
+      data: {
+        ...dto,
+        links: dto.links?.map(({ rotulo, url }) => ({
+          rotulo: rotulo.trim(),
+          url: withScheme(url.trim()),
+        })),
+      },
       select: PROFILE_SELECT,
     });
+  }
+
+  /** Mesmo fluxo da foto: a publicUrl vai num PATCH /portfolio-profile { capaUrl }. */
+  createCoverUploadUrl(dto: PortfolioProfilePhotoUploadUrlDto) {
+    return this.storage.createPresignedUploadIn(
+      'portfolio-profile',
+      dto.nomeArquivo,
+      dto.contentType,
+    );
   }
 
   createPhotoUploadUrl(dto: PortfolioProfilePhotoUploadUrlDto) {

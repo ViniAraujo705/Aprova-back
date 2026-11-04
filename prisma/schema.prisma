@@ -962,6 +962,11 @@ model PortfolioProfile {
   // inclusive "editorial-escuro", que nao e um identificador valido de enum
   // no Prisma. A whitelist fica no DTO.
   templateId   String?  @map("template_id")
+  // Banner do topo do hub (imagem no R2, ver POST /portfolio-profile/cover-upload-url).
+  capaUrl      String?  @map("capa_url")
+  bio          String?
+  // Links de contato do hub: [{ rotulo, url }] na ordem de exibicao.
+  links        Json?
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
@@ -994,6 +999,8 @@ model PortfolioVideo {
   statusProcessamento ProcessamentoStatus @default(processando) @map("status_processamento")
   duracaoSegundos     Int?                @map("duracao_segundos")
   ordem               Int                 @default(0)
+  // Item marcado como destaque no album publico.
+  destaque            Boolean             @default(false)
   criadoEm            DateTime            @default(now()) @map("criado_em")
 
   portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)

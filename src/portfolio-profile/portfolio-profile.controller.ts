@@ -61,4 +61,14 @@ export class PortfolioProfileController {
   createPhotoUploadUrl(@Body() dto: PortfolioProfilePhotoUploadUrlDto) {
     return this.portfolioProfileService.createPhotoUploadUrl(dto);
   }
+
+  @Post('cover-upload-url')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Presigned URL so de imagem pra capa (banner) do hub - a publicUrl vai num PATCH /portfolio-profile { capaUrl }.',
+  })
+  createCoverUploadUrl(@Body() dto: PortfolioProfilePhotoUploadUrlDto) {
+    return this.portfolioProfileService.createCoverUploadUrl(dto);
+  }
 }

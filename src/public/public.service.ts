@@ -184,6 +184,7 @@ export class PublicService {
             posterUrl: true,
             statusProcessamento: true,
             ordem: true,
+            destaque: true,
             criadoEm: true,
           },
         },
@@ -219,6 +220,7 @@ export class PublicService {
         posterUrl: v.posterUrl,
         statusProcessamento: v.statusProcessamento,
         ordem: v.ordem,
+        destaque: v.destaque,
         criadoEm: v.criadoEm,
       })),
     };
@@ -236,6 +238,9 @@ export class PublicService {
       select: {
         fotoUrl: true,
         templateId: true,
+        capaUrl: true,
+        bio: true,
+        links: true,
         account: {
           select: {
             nomeAgencia: true,
@@ -314,6 +319,9 @@ export class PublicService {
     return {
       fotoUrl: profile.fotoUrl,
       templateId: profile.templateId,
+      capaUrl: profile.capaUrl,
+      bio: profile.bio,
+      links: profile.links ?? [],
       agencia: {
         nome: profile.account.nomeAgencia,
         logoUrl: profile.account.memberships[0]?.user.logoUrl ?? null,

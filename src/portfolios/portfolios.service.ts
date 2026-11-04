@@ -425,6 +425,7 @@ export class PortfoliosService {
       posterUrl: v.posterUrl,
       statusProcessamento: v.statusProcessamento,
       ordem: v.ordem,
+      destaque: v.destaque,
       criadoEm: v.criadoEm,
     };
   }
