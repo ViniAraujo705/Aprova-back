@@ -1,4 +1,10 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import { PortfolioMediaType } from '@prisma/client';
 
 export class UpdatePortfolioVideoDto {
@@ -15,4 +21,9 @@ export class UpdatePortfolioVideoDto {
   @IsOptional()
   @IsString()
   descricao?: string | null;
+
+  // Destaque no album publico (selo no item).
+  @IsOptional()
+  @IsBoolean()
+  destaque?: boolean;
 }
