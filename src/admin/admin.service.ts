@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ProcessamentoStatus,
   UserRole,
@@ -33,7 +37,13 @@ export class AdminService {
       orderBy: { user: { criadoEm: 'desc' } },
       select: {
         user: {
-          select: { id: true, nome: true, email: true, status: true, criadoEm: true },
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+            status: true,
+            criadoEm: true,
+          },
         },
         account: {
           select: {
@@ -176,7 +186,9 @@ export class AdminService {
                 nomeAgencia: true,
                 memberships: {
                   where: { role: UserRole.owner },
-                  select: { user: { select: { id: true, nome: true, email: true } } },
+                  select: {
+                    user: { select: { id: true, nome: true, email: true } },
+                  },
                   orderBy: { criadoEm: 'asc' },
                   take: 1,
                 },
@@ -210,10 +222,15 @@ export class AdminService {
   async reprocessVideo(id: string) {
     const video = await this.prisma.video.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, arquivoRemovidoEm: true },
     });
     if (!video) {
       throw new NotFoundException('Video nao encontrado');
+    }
+    if (video.arquivoRemovidoEm) {
+      throw new ConflictException(
+        'O arquivo deste video ja foi removido (armazenamento liberado)',
+      );
     }
 
     await this.prisma.video.update({

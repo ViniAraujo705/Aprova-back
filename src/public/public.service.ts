@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  GoneException,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -28,6 +29,7 @@ import {
   downloadFileName,
   videoContentTypeFromKey,
 } from '../common/download-file.util';
+import { previousVersionIds } from '../common/version-chain.util';
 
 @Injectable()
 export class PublicService {
@@ -49,6 +51,7 @@ export class PublicService {
       where: { linkPublico },
       select: {
         nome: true,
+        contatoAvulso: true,
         client: {
           select: {
             nome: true,
@@ -88,6 +91,7 @@ export class PublicService {
             statusProcessamento: true,
             versao: true,
             criadoEm: true,
+            arquivoRemovidoEm: true,
           },
         },
       },
@@ -101,9 +105,11 @@ export class PublicService {
       // Marca propria do cliente (branding), quando configurada (ver
       // ClientsService.updateBranding), sobrepoe a da agencia nos links
       // publicos deste cliente - merge fica a cargo do frontend.
+      // Projeto avulso: sem cliente cadastrado, mostra o nome livre de quem
+      // recebe o link (ou nada) e usa so o branding da agencia.
       cliente: {
-        nome: project.client.nome,
-        branding: this.clientBranding(project.client),
+        nome: project.client?.nome ?? project.contatoAvulso ?? '',
+        branding: project.client ? this.clientBranding(project.client) : null,
       },
       agencia: {
         nome: project.account.nomeAgencia,
@@ -124,6 +130,7 @@ export class PublicService {
         status: v.status,
         statusProcessamento: v.statusProcessamento,
         versao: v.versao,
+        arquivoRemovidoEm: v.arquivoRemovidoEm,
       })),
     };
   }
@@ -251,6 +258,7 @@ export class PublicService {
               select: {
                 id: true,
                 nome: true,
+                capaUrl: true,
                 portfolios: {
                   orderBy: { criadoEm: 'desc' },
                   select: {
@@ -284,6 +292,9 @@ export class PublicService {
       .map((cat) => ({
         id: cat.id,
         nome: cat.nome,
+        // Capa da ABA (nao confundir com o capaUrl de cada album abaixo).
+        // Null aqui = o front cai no fallback da capa do primeiro album.
+        capaUrl: cat.capaUrl,
         // So albuns com pelo menos um item (video ou foto) - album vazio
         // nao aparece no hub.
         portfolios: cat.portfolios
@@ -347,61 +358,81 @@ export class PublicService {
    */
   async getVideo(linkPublico: string) {
     const video = await this.resolveVideo(linkPublico);
+    const previousIds = await previousVersionIds(this.prisma, video.id);
 
-    const [comments, ratings, queue, ratingQuestions] = await Promise.all([
-      this.prisma.comment.findMany({
-        // Canal publico: SOMENTE comentarios do canal do cliente. O canal
-        // interno da agencia nunca e exposto aqui.
-        where: { videoId: video.id, channel: CommentChannel.cliente },
-        orderBy: { timestampVideo: 'asc' },
-        select: {
-          id: true,
-          timestampVideo: true,
-          texto: true,
-          audioUrl: true,
-          autorType: true,
-          autorNome: true,
-          // Respostas do owner ao cliente aparecem no mesmo canal; o nome
-          // vem do usuario autenticado (autor_nome fica nulo nesse caso).
-          autorUser: { select: { nome: true } },
-          parentId: true,
-          criadoEm: true,
-        },
-      }),
-      this.prisma.rating.findMany({
-        where: { videoId: video.id },
-        orderBy: { criadoEm: 'asc' },
-        select: {
-          id: true,
-          ratingQuestionId: true,
-          nota: true,
-          criadoEm: true,
-        },
-      }),
-      // Fila para o swipe "Preview Reels": todos os videos do mesmo
-      // projeto (escopo resolvido a partir do video atual, nunca de um
-      // parametro da request), incluindo o proprio video atual - o front
-      // localiza a posicao via linkPublico para navegar prev/next. Escopo
-      // e o projeto (nao o cliente inteiro) para o reels nao vazar para
-      // entregas antigas de outros projetos do mesmo cliente.
-      this.prisma.video.findMany({
-        where: { projectId: video.projectId },
-        orderBy: { criadoEm: 'asc' },
-        select: {
-          linkPublico: true,
-          nomeArquivo: true,
-          thumbnailUrl: true,
-          status: true,
-        },
-      }),
-      // Perguntas de avaliacao ativas da conta dona deste video (substitui
-      // as categorias fixas iluminacao/audio/enquadramento).
-      this.prisma.ratingQuestion.findMany({
-        where: { accountId: video.project.accountId, ativo: true },
-        orderBy: { ordem: 'asc' },
-        select: { id: true, texto: true, ordem: true },
-      }),
-    ]);
+    const publicCommentSelect = {
+      id: true,
+      timestampVideo: true,
+      texto: true,
+      audioUrl: true,
+      autorType: true,
+      autorNome: true,
+      // Respostas do owner ao cliente aparecem no mesmo canal; o nome
+      // vem do usuario autenticado (autor_nome fica nulo nesse caso).
+      autorUser: { select: { nome: true } },
+      parentId: true,
+      criadoEm: true,
+    } as const;
+
+    const [comments, previousComments, ratings, queue, ratingQuestions] =
+      await Promise.all([
+        this.prisma.comment.findMany({
+          // Canal publico: SOMENTE comentarios do canal do cliente. O canal
+          // interno da agencia nunca e exposto aqui.
+          where: { videoId: video.id, channel: CommentChannel.cliente },
+          orderBy: { timestampVideo: 'asc' },
+          select: publicCommentSelect,
+        }),
+        // Ajustes pedidos nas versoes anteriores (mesmo canal do cliente).
+        // Continuam gravados na versao em que foram feitos; o front mostra
+        // recolhidos e so leitura - o timestamp se refere ao corte antigo.
+        // Na v1 `previousIds` e vazio e o `in: []` nao encontra nada.
+        this.prisma.comment.findMany({
+          where: {
+            videoId: { in: previousIds },
+            channel: CommentChannel.cliente,
+          },
+          orderBy: [{ timestampVideo: 'asc' }, { criadoEm: 'asc' }],
+          select: {
+            ...publicCommentSelect,
+            video: { select: { versao: true } },
+          },
+        }),
+        this.prisma.rating.findMany({
+          // Sem a linha da nota geral (pergunta nula): ela ja vai em notaGeral.
+          where: { videoId: video.id, ratingQuestionId: { not: null } },
+          orderBy: { criadoEm: 'asc' },
+          select: {
+            id: true,
+            ratingQuestionId: true,
+            nota: true,
+            criadoEm: true,
+          },
+        }),
+        // Fila para o swipe "Preview Reels": todos os videos do mesmo
+        // projeto (escopo resolvido a partir do video atual, nunca de um
+        // parametro da request), incluindo o proprio video atual - o front
+        // localiza a posicao via linkPublico para navegar prev/next. Escopo
+        // e o projeto (nao o cliente inteiro) para o reels nao vazar para
+        // entregas antigas de outros projetos do mesmo cliente.
+        this.prisma.video.findMany({
+          where: { projectId: video.projectId },
+          orderBy: { criadoEm: 'asc' },
+          select: {
+            linkPublico: true,
+            nomeArquivo: true,
+            thumbnailUrl: true,
+            status: true,
+          },
+        }),
+        // Perguntas de avaliacao ativas da conta dona deste video (substitui
+        // as categorias fixas iluminacao/audio/enquadramento).
+        this.prisma.ratingQuestion.findMany({
+          where: { accountId: video.project.accountId, ativo: true },
+          orderBy: { ordem: 'asc' },
+          select: { id: true, texto: true, ordem: true },
+        }),
+      ]);
 
     return {
       id: video.id,
@@ -422,6 +453,9 @@ export class PublicService {
       urlOtimizada: video.urlOtimizada,
       thumbnailUrl: video.thumbnailUrl,
       statusProcessamento: video.statusProcessamento,
+      // Preenchido quando a agencia liberou o armazenamento do projeto
+      // aprovado: o arquivo nao existe mais, o front mostra so a capa.
+      arquivoRemovidoEm: video.arquivoRemovidoEm,
       versao: video.versao,
       status: video.status,
       // Nota geral (1-5) dada pelo cliente no momento da aprovacao.
@@ -431,9 +465,9 @@ export class PublicService {
       // tags (preview do WhatsApp) no frontend
       projeto: { nome: video.project.nome },
       cliente: {
-        nome: video.project.client.nome,
-        descricao: video.project.client.descricao,
-        fotoUrl: video.project.client.fotoUrl,
+        nome: video.project.client?.nome ?? video.project.contatoAvulso ?? '',
+        descricao: video.project.client?.descricao ?? null,
+        fotoUrl: video.project.client?.fotoUrl ?? null,
       },
       // Branding (white label) da agencia dona do video. O nome vem da
       // conta; logo/cor vem do owner da agencia.
@@ -451,6 +485,15 @@ export class PublicService {
         ...c,
         isAgencyReply: c.autorType === CommentAuthorType.owner,
       })),
+      // Mais recente primeiro (v2 antes de v1); cada item traz a `versao`
+      // em que foi feito.
+      comentariosVersoesAnteriores: previousComments
+        .map(({ video: origem, ...c }) => ({
+          ...c,
+          versao: origem.versao,
+          isAgencyReply: c.autorType === CommentAuthorType.owner,
+        }))
+        .sort((a, b) => b.versao - a.versao),
       ratings,
       ratingQuestions,
       queue: queue.map((v) => ({
@@ -482,10 +525,16 @@ export class PublicService {
         urlStorage: true,
         urlOtimizada: true,
         statusProcessamento: true,
+        arquivoRemovidoEm: true,
       },
     });
     if (!video) {
       throw new NotFoundException('Video nao encontrado');
+    }
+    if (video.arquivoRemovidoEm) {
+      throw new GoneException(
+        'O arquivo deste video foi removido pela agencia apos a aprovacao',
+      );
     }
 
     const entregaOtimizada = tipo === 'otimizado' && !!video.urlOtimizada;
@@ -606,7 +655,7 @@ export class PublicService {
 
     const rating = await this.prisma.rating.create({
       data: {
-        videoId: video.id,
+        ...this.ratingSnapshot(video),
         ratingQuestionId: dto.ratingQuestionId,
         nota: dto.nota,
       },
@@ -629,6 +678,7 @@ export class PublicService {
       linkPublico,
       VideoStatus.aprovado,
       dto.notaGeral,
+      dto.depoimento || null,
     );
     await this.notifications.notify(
       updated.id,
@@ -675,6 +725,7 @@ export class PublicService {
     linkPublico: string,
     status: VideoStatus,
     notaGeral?: number,
+    depoimento?: string | null,
   ) {
     const video = await this.resolveVideo(linkPublico);
     const etapaProducao = PublicService.ETAPA_BY_STATUS[status];
@@ -715,7 +766,58 @@ export class PublicService {
       });
     }
 
+    // A nota geral tambem entra no historico de avaliacoes (rating sem
+    // pergunta), que sobrevive a exclusao do video/projeto/cliente.
+    if (status === VideoStatus.aprovado && notaGeral) {
+      const geral = await this.prisma.rating.findFirst({
+        where: { videoId: video.id, ratingQuestionId: null },
+        select: { id: true },
+      });
+      if (geral) {
+        await this.prisma.rating.update({
+          where: { id: geral.id },
+          data: { nota: notaGeral, comentario: depoimento ?? null },
+        });
+      } else {
+        await this.prisma.rating.create({
+          data: {
+            ...this.ratingSnapshot(video),
+            nota: notaGeral,
+            comentario: depoimento ?? null,
+          },
+        });
+      }
+    }
+
     return updated;
+  }
+
+  /**
+   * Conta/projeto/cliente e nomes copiados para a linha do rating: o
+   * relatorio de avaliacoes continua mostrando de quem era a nota mesmo
+   * depois que o video, o projeto ou o cliente forem excluidos.
+   */
+  private ratingSnapshot(video: {
+    id: string;
+    nomeArquivo: string;
+    projectId: string;
+    project: {
+      nome: string;
+      accountId: string;
+      clientId: string | null;
+      contatoAvulso: string | null;
+      client: { nome: string } | null;
+    };
+  }) {
+    return {
+      accountId: video.project.accountId,
+      videoId: video.id,
+      projectId: video.projectId,
+      clienteId: video.project.clientId,
+      videoNome: video.nomeArquivo,
+      projetoNome: video.project.nome,
+      clienteNome: video.project.client?.nome ?? video.project.contatoAvulso,
+    };
   }
 
   /**
@@ -874,6 +976,7 @@ export class PublicService {
         status: true,
         notaGeral: true,
         criadoEm: true,
+        arquivoRemovidoEm: true,
         // Usado so internamente para escopar a queue (nunca vai na resposta).
         projectId: true,
         // Somente o nome do projeto/cliente e o branding da agencia deste
@@ -883,6 +986,7 @@ export class PublicService {
             nome: true,
             accountId: true,
             clientId: true,
+            contatoAvulso: true,
             client: {
               select: { nome: true, descricao: true, fotoUrl: true },
             },

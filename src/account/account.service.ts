@@ -20,6 +20,7 @@ import { toMemberDto } from '../common/dto/team-role.util';
 import { resolveOwnerBranding } from '../common/account-branding.util';
 import { SessionMeta, SessionsService } from '../sessions/sessions.service';
 import { PlansService } from '../plans/plans.service';
+import { resolveFrontendUrl } from '../common/frontend-url.util';
 
 @Injectable()
 export class AccountService {
@@ -358,8 +359,8 @@ export class AccountService {
     const inviteUrl = this.buildInviteUrl(invite.token);
     await this.mail.send(
       invite.email,
-      'Convite para colaborar na Vistoow',
-      `Voce foi convidado(a) para colaborar como editor na APROVA. Acesse o link abaixo para criar sua senha:\n${inviteUrl}`,
+      'Convite para colaborar no Check',
+      `Voce foi convidado(a) para colaborar como editor no Check. Acesse o link abaixo para criar sua senha:\n${inviteUrl}`,
     );
 
     // Devolve a linha inteira do convite (mesmo shape de listMembers) e nao
@@ -549,10 +550,7 @@ export class AccountService {
   }
 
   private buildInviteUrl(token: string): string {
-    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
-      .split(',')[0]
-      .trim();
-    const origin = base && base !== '*' ? base : 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config);
     return `${origin}/convite/${token}`;
   }
 }

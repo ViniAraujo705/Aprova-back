@@ -73,7 +73,9 @@ export class CheckDayNotesService {
     const note = await this.prisma.checkDayNote.findFirst({
       where: { id, accountId },
     });
-    if (!note) throw new NotFoundException('Nota do CheckDay nao encontrada');
+    if (!note) {
+      throw new NotFoundException('Nota do CheckDay nao encontrada');
+    }
     return note;
   }
 

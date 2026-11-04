@@ -29,6 +29,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { GoogleCalendarOAuthService } from './google-calendar-oauth.service';
 import { GoogleCalendarStatusDto } from './dto/google-calendar-status.dto';
+import { resolveFrontendUrl } from '../common/frontend-url.util';
 
 const STATE_PURPOSE = 'gcal-connect';
 
@@ -147,10 +148,10 @@ export class GoogleCalendarController {
   }
 
   private buildFrontendUrl(status: 'conectado' | 'erro'): string {
-    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
-      .split(',')[0]
-      .trim();
-    const origin = base && base !== '*' ? base : 'http://localhost:5173';
-    return `${origin}/configuracoes/integracoes?google=${status}`;
+    const origin = resolveFrontendUrl(this.config);
+    // Volta pro calendario, nao pra /configuracoes/integracoes: a conexao e
+    // pessoal (owner E editor), e integracoes e owner-only - o editor caia
+    // num redirect pro dashboard sem ver o resultado.
+    return `${origin}/calendario?google=${status}`;
   }
 }

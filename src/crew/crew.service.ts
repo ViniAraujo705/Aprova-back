@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCrewMemberDto } from './dto/create-crew-member.dto';
@@ -32,5 +36,16 @@ export class CrewService {
       where: { accountId },
       orderBy: { nome: 'asc' },
     });
+  }
+
+  async remove(accountId: string, id: string) {
+    // Escopado por conta: id de outra conta responde 404, sem vazar que existe.
+    const { count } = await this.prisma.crewMember.deleteMany({
+      where: { id, accountId },
+    });
+    if (count === 0) {
+      throw new NotFoundException('Pessoa nao encontrada');
+    }
+    return { deleted: true };
   }
 }

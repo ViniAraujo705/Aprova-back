@@ -137,11 +137,17 @@ export class PortfoliosService {
         thumbnailUrl: true,
         statusProcessamento: true,
         duracaoSegundos: true,
+        arquivoRemovidoEm: true,
       },
     });
     if (!video) {
       throw new NotFoundException(
         'Video nao encontrado ou nao pertence a esta conta',
+      );
+    }
+    if (video.arquivoRemovidoEm) {
+      throw new BadRequestException(
+        'O arquivo deste video foi removido ao liberar o armazenamento do projeto',
       );
     }
 

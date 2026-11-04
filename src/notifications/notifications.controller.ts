@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   DefaultValuePipe,
   Get,
@@ -24,6 +25,7 @@ import {
   AuthUser,
 } from '../auth/decorators/current-user.decorator';
 import { NotificationsService } from './notifications.service';
+import { UpdateNotificationPreferencesDto } from './update-notification-preferences.dto';
 
 /**
  * Notificacoes in-app do owner/editor responsavel. Escopo sempre
@@ -49,6 +51,26 @@ export class NotificationsController {
     naoLidas: boolean,
   ) {
     return this.notificationsService.list(user, naoLidas || undefined);
+  }
+
+  @Get('preferences')
+  @ApiOperation({
+    summary: 'Preferências de e-mail das notificações do usuário autenticado.',
+  })
+  getPreferences(@CurrentUser() user: AuthUser) {
+    return this.notificationsService.getPreferences(user);
+  }
+
+  @Patch('preferences')
+  @ApiOperation({
+    summary:
+      'Atualiza as preferências de e-mail (resumo diário, avisos na hora, tipos desligados).',
+  })
+  updatePreferences(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateNotificationPreferencesDto,
+  ) {
+    return this.notificationsService.updatePreferences(user, dto);
   }
 
   @Get('unread-count')

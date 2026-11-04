@@ -16,7 +16,7 @@ import {
   CurrentUser,
   AuthUser,
 } from '../auth/decorators/current-user.decorator';
-import { BillingService } from './billing.service';
+import { AsaasWebhookBody, BillingService } from './billing.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 
 @ApiTags('billing')
@@ -73,13 +73,9 @@ export class BillingController {
   @ApiExcludeEndpoint()
   async handleWebhook(
     @Headers('asaas-access-token') token: string | undefined,
-    @Body()
-    body: {
-      event?: string;
-      payment?: { subscription?: string; externalReference?: string };
-    },
+    @Body() body: AsaasWebhookBody,
   ) {
-    await this.billingService.processWebhook(token, body?.event, body?.payment);
+    await this.billingService.processWebhook(token, body);
     return { received: true };
   }
 }

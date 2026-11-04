@@ -261,7 +261,12 @@ export class VideosService {
             select: { id: true, versao: true, nomeArquivo: true },
           },
           _count: {
-            select: { comments: true, ratings: true, versoes: true },
+            select: {
+              comments: true,
+              // A nota geral (pergunta nula) nao conta como avaliacao avulsa.
+              ratings: { where: { ratingQuestionId: { not: null } } },
+              versoes: true,
+            },
           },
         },
       }),
@@ -429,7 +434,8 @@ export class VideosService {
   }
 
   /**
-   * Exclui o video (comentarios/ratings caem em cascata via schema) e os
+   * Exclui o video (comentarios caem em cascata via schema; as notas ficam
+   * no historico de avaliacoes, so perdem o videoId) e os
    * arquivos correspondentes no R2. Bloqueia com 409 se houver versoes
    * filhas (videoPaiId) apontando para este video, para nao orfanar
    * historico sem o owner decidir explicitamente. Diferente de

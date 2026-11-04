@@ -7,6 +7,8 @@ import { GoogleDriveService } from './google-drive.service';
 
 @Module({
   imports: [
+    // AuthModule nao exporta seu JwtService - registra um proprio aqui so
+    // pra assinar/validar o `state` do callback OAuth (mesmo JWT_SECRET).
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

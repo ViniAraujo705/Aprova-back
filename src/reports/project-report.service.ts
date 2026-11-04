@@ -34,6 +34,7 @@ export class ProjectReportService {
       select: {
         nome: true,
         criadoEm: true,
+        contatoAvulso: true,
         client: { select: { nome: true, email: true } },
         videos: {
           orderBy: [{ versao: 'asc' }],
@@ -80,7 +81,8 @@ export class ProjectReportService {
   private buildDocDefinition(project: {
     nome: string;
     criadoEm: Date;
-    client: { nome: string; email: string | null };
+    contatoAvulso: string | null;
+    client: { nome: string; email: string | null } | null;
     videos: {
       nomeArquivo: string;
       versao: number;
@@ -95,7 +97,7 @@ export class ProjectReportService {
       }[];
       ratings: {
         nota: number;
-        ratingQuestion: { texto: string; ordem: number };
+        ratingQuestion: { texto: string; ordem: number } | null;
       }[];
     }[];
   }): TDocumentDefinitions {
@@ -106,9 +108,11 @@ export class ProjectReportService {
         style: 'meta',
         text: [
           { text: 'Cliente: ', bold: true },
-          project.client.email
-            ? `${project.client.nome} (${project.client.email})\n`
-            : `${project.client.nome}\n`,
+          !project.client
+            ? `${project.contatoAvulso || 'Projeto avulso'}\n`
+            : project.client.email
+              ? `${project.client.nome} (${project.client.email})\n`
+              : `${project.client.nome}\n`,
           { text: 'Gerado em: ', bold: true },
           this.formatDate(new Date()),
         ],
@@ -200,7 +204,8 @@ export class ProjectReportService {
   private ratingsBlock(
     ratings: {
       nota: number;
-      ratingQuestion: { texto: string; ordem: number };
+      // Nulo = nota geral dada na aprovacao.
+      ratingQuestion: { texto: string; ordem: number } | null;
     }[],
   ): Content {
     if (ratings.length === 0) {
@@ -216,12 +221,13 @@ export class ProjectReportService {
     // video (perguntas sao customizaveis por conta, nao mais fixas).
     const porPergunta = new Map<string, { ordem: number; notas: number[] }>();
     for (const r of ratings) {
-      const atual = porPergunta.get(r.ratingQuestion.texto) ?? {
-        ordem: r.ratingQuestion.ordem,
+      const texto = r.ratingQuestion?.texto ?? 'Nota geral';
+      const atual = porPergunta.get(texto) ?? {
+        ordem: r.ratingQuestion?.ordem ?? -1,
         notas: [],
       };
       atual.notas.push(r.nota);
-      porPergunta.set(r.ratingQuestion.texto, atual);
+      porPergunta.set(texto, atual);
     }
     const perguntas = [...porPergunta.entries()].sort(
       (a, b) => a[1].ordem - b[1].ordem,

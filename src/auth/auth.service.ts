@@ -26,6 +26,7 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { AppleLoginDto } from './dto/apple-login.dto';
 import { toMemberDto } from '../common/dto/team-role.util';
 import { resolveOwnerBranding } from '../common/account-branding.util';
+import { resolveFrontendUrl } from '../common/frontend-url.util';
 
 @Injectable()
 export class AuthService {
@@ -208,7 +209,7 @@ export class AuthService {
     try {
       await this.mail.send(
         user.email,
-        'Redefinicao de senha - Vistoow',
+        'Redefinição de senha - Check',
         `Recebemos um pedido para redefinir sua senha. Acesse o link abaixo (valido por 1 hora):\n${resetUrl}\n\nSe voce nao pediu isso, ignore este email.`,
       );
     } catch (err) {
@@ -475,8 +476,8 @@ export class AuthService {
       if (user.emailVerificadoEm) {
         await this.mail.send(
           user.email,
-          'Bem-vindo(a) ao Vistoow!',
-          `Ola, ${user.nome}!\n\nSua conta foi criada com sucesso. Bem-vindo(a) ao Vistoow.`,
+          'Bem-vindo(a) ao Check!',
+          `Ola, ${user.nome}!\n\nSua conta foi criada com sucesso. Bem-vindo(a) ao Check.`,
         );
         return;
       }
@@ -508,14 +509,14 @@ export class AuthService {
 
     const confirmUrl = this.buildConfirmUrl(verification.token);
     const intro = opts.welcome
-      ? `Ola, ${user.nome}!\n\nSua conta foi criada com sucesso. Bem-vindo(a) ao Vistoow.`
+      ? `Ola, ${user.nome}!\n\nSua conta foi criada com sucesso. Bem-vindo(a) ao Check.`
       : `Ola, ${user.nome}!`;
 
     await this.mail.send(
       user.email,
       opts.welcome
-        ? 'Bem-vindo(a) ao Vistoow!'
-        : 'Confirme seu email - Vistoow',
+        ? 'Bem-vindo(a) ao Check!'
+        : 'Confirme seu e-mail - Check',
       `${intro}\n\nConfirme seu email acessando o link abaixo (valido por 7 dias):\n${confirmUrl}`,
     );
   }
@@ -706,18 +707,12 @@ export class AuthService {
   }
 
   private buildResetUrl(token: string): string {
-    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
-      .split(',')[0]
-      .trim();
-    const origin = base && base !== '*' ? base : 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config);
     return `${origin}/redefinir-senha/${token}`;
   }
 
   private buildConfirmUrl(token: string): string {
-    const base = (this.config.get<string>('CORS_ORIGIN') ?? '')
-      .split(',')[0]
-      .trim();
-    const origin = base && base !== '*' ? base : 'http://localhost:5173';
+    const origin = resolveFrontendUrl(this.config);
     return `${origin}/confirmar-email/${token}`;
   }
 

@@ -3,13 +3,15 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -21,6 +23,7 @@ import {
 import { PortfolioCategoriesService } from './portfolio-categories.service';
 import { CreatePortfolioCategoryDto } from './dto/create-portfolio-category.dto';
 import { UpdatePortfolioCategoryDto } from './dto/update-portfolio-category.dto';
+import { PortfolioCategoryCoverUploadUrlDto } from './dto/cover-upload-url.dto';
 
 /**
  * Categorias livres criadas pelo owner para organizar os albuns de
@@ -57,6 +60,24 @@ export class PortfolioCategoriesController {
     @Body() dto: UpdatePortfolioCategoryDto,
   ) {
     return this.portfolioCategoriesService.update(user.accountId, id, dto);
+  }
+
+  @Post(':id/cover-upload-url')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Presigned URL so de imagem pra capa da aba (sem passo de confirmacao - a publicUrl vai direto num PATCH /portfolio-categories/:id { capaUrl }).',
+  })
+  createCoverUploadUrl(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: PortfolioCategoryCoverUploadUrlDto,
+  ) {
+    return this.portfolioCategoriesService.createCoverUploadUrl(
+      user.accountId,
+      id,
+      dto,
+    );
   }
 
   @Delete(':id')

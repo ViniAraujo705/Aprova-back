@@ -98,6 +98,32 @@ export class ProjectsController {
     return this.projectsService.update(user.accountId, id, dto, user);
   }
 
+  @Get(':id/storage')
+  @ApiOperation({
+    summary:
+      'Resumo do armazenamento do projeto: quantos arquivos/bytes "liberar armazenamento" apagaria e se ja e possivel (todas as entregas aprovadas).',
+  })
+  storageSummary(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.projectsService.storageSummary(user.accountId, id, user);
+  }
+
+  @Post(':id/release-storage')
+  @Roles(UserRole.owner)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Apaga DEFINITIVAMENTE do R2 os arquivos de video (todas as versoes) de um projeto com todas as entregas aprovadas. Comentarios, notas, historico e relatorios ficam; a thumbnail tambem.',
+  })
+  releaseStorage(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.projectsService.releaseStorage(user.accountId, id, user);
+  }
+
   @Delete(':id')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.projectsService.remove(user.accountId, id, user);

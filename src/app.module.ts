@@ -38,10 +38,14 @@ import { LabelsModule } from './labels/labels.module';
 import { ClientFieldsModule } from './client-fields/client-fields.module';
 import { CheckDayNotesModule } from './checkday/checkday-notes.module';
 import { bullmqConnectionFactory } from './queue/bullmq-connection';
+import { RedisThrottlerStorage } from './common/redis-throttler.storage';
+import { validateFrontendUrl } from './common/frontend-url.util';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    // validate roda no boot: sem FRONTEND_URL em producao o app nao sobe,
+    // em vez de subir e mandar link de localhost pro usuario.
+    ConfigModule.forRoot({ isGlobal: true, validate: validateFrontendUrl }),
     // Cron dos lembretes de gravacao (NotificationsService.sendRecordingReminders).
     // So no processo web (AppModule) - o worker (WorkerModule) e dedicado a
     // processamento de video e nao precisa desse job.
@@ -52,12 +56,18 @@ import { bullmqConnectionFactory } from './queue/bullmq-connection';
     // ratings) estava esbarrando no limite anterior sem nenhum abuso.
     // Rotas sensiveis (login, reset de senha etc.) tem limites proprios e
     // mais restritivos via @Throttle nos respectivos controllers.
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60_000,
-        limit: 120,
-      },
-    ]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        storage: new RedisThrottlerStorage(config),
+        throttlers: [
+          {
+            ttl: 60_000,
+            limit: 120,
+          },
+        ],
+      }),
+    }),
     // Fila assíncrona (BullMQ + Redis) usada no processamento de vídeo.
     // Este processo (web) so enfileira jobs; quem consome roda em
     // WorkerModule (src/main-worker.ts), processo separado.
@@ -95,8 +105,8 @@ import { bullmqConnectionFactory } from './queue/bullmq-connection';
     GoogleDriveModule,
     ClientActivityModule,
     ClientFilesModule,
-    ClientFieldsModule,
     LabelsModule,
+    ClientFieldsModule,
     CheckDayNotesModule,
   ],
   providers: [

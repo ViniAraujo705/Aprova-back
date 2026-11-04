@@ -828,12 +828,24 @@ Resposta `200`: `{ "uploadUrl": "...", "key": "...", "publicUrl": "...", "expire
 |---|---|---|---|
 | `GET` | `/portfolio-categories` | — | `PortfolioCategory[]` (por `ordem` crescente) |
 | `POST` | `/portfolio-categories` | `{ nome }` | `PortfolioCategory` criada (entra no fim da lista) |
-| `PATCH` | `/portfolio-categories/:id` | `{ nome?, ordem? }` | `PortfolioCategory` atualizada |
+| `PATCH` | `/portfolio-categories/:id` | `{ nome?, ordem?, capaUrl? }` | `PortfolioCategory` atualizada |
+| `POST` | `/portfolio-categories/:id/cover-upload-url` | `{ nomeArquivo, contentType }` | `{ uploadUrl, key, publicUrl, expiresIn }` |
 | `DELETE` | `/portfolio-categories/:id` | — | `{ "deleted": true }` |
 
-`PortfolioCategory`: `{ id, nome, ordem, criadoEm, atualizadoEm }`. Livres —
+`PortfolioCategory`: `{ id, nome, ordem, capaUrl, criadoEm, atualizadoEm }`. Livres —
 o owner nomeia e ordena como quiser (não há reordenação em lote como em
 `/portfolios/:id/videos/order`; ajuste `ordem` item a item via `PATCH`).
+
+`capaUrl` é a **capa própria da aba** no hub público. Quando `null`, a
+vitrine cai no fallback histórico — a capa do primeiro álbum da categoria —,
+que fazia uma aba com vários álbuns aparecer com a cara do primeiro deles
+(uma aba "Marketing médico" com 3 álbuns aparecia como "HDR Fotos"). Fluxo
+de 2 passos idêntico ao da capa de álbum: `POST
+/portfolio-categories/:id/cover-upload-url` (só imagem: `image/png`,
+`image/jpeg`, `image/webp`) → `PUT <uploadUrl>` no R2 → `PATCH
+/portfolio-categories/:id { capaUrl: publicUrl }`, sem passo de
+confirmação. `capaUrl: null` no `PATCH` remove a capa; ausente deixa como
+está. Os arquivos vão pro prefixo `portfolio-category-covers/` do bucket.
 
 Excluir uma categoria (`DELETE`) **não apaga** os álbuns associados a ela —
 só desassocia (`categoriaId: null` em cada `Portfolio` que apontava pra
@@ -853,6 +865,7 @@ e **cliente** (resposta do owner ao comentário público do cliente).
 | Método | Rota | Role | Body | Descrição |
 |---|---|---|---|---|
 | `GET` | `/videos/:id/comments/internal` | `owner`, `editor` | — | Lista o canal interno |
+| `GET` | `/videos/:id/comments/internal/previous-versions` | `owner`, `editor` | — | Canal interno das versões **anteriores** deste vídeo (só leitura); cada item traz `versao`, mais recente primeiro |
 | `POST` | `/videos/:id/comments/internal` | `owner`, `editor` | `{ timestampVideo, texto, parentId? }` | Cria comentário interno (autor = usuário do token) |
 | `POST` | `/videos/:id/comments/client-reply` | `owner` apenas | `{ timestampVideo, texto, parentId? }` | Resposta do owner ao cliente, no canal cliente |
 | `DELETE` | `/videos/:id/comments/:commentId` | `owner`, `editor` | — | Exclui um comentário do canal **cliente** (moderação) |
@@ -1192,7 +1205,7 @@ Autenticado — `owner` ou `editor`.
 
 | Método | Rota | Body | Retorno |
 |---|---|---|---|
-| `GET` | `/plans/me` | — | `{ plan, limits, usage }` |
+| `GET` | `/plans/me` | — | `{ plan, limits, usage, assinatura }` |
 
 ```json
 {
@@ -1224,9 +1237,28 @@ Autenticado — `owner` ou `editor`.
     "approvalFilesThisMonth": 5,
     "portfolioProjects": 2,
     "ratingQuestions": 3
+  },
+  "assinatura": {
+    "planoContratado": null,
+    "ciclo": null,
+    "ativa": false,
+    "suspensa": false
   }
 }
 ```
+
+`assinatura` descreve o estado da **cobrança**, que é diferente do plano em
+vigor (`plan`):
+
+- `planoContratado`: o plano assinado na Asaas, ou `null` se a conta nunca
+  assinou (ou já cancelou).
+- `ciclo`: `"MONTHLY"` ou `"YEARLY"`.
+- `ativa`: existe assinatura confirmada na Asaas.
+- `suspensa`: **`true` quando `plan` caiu pra `free` mas o plano contratado
+  continua lá** — ou seja, a cobrança do mês venceu e a Asaas ainda está
+  tentando o cartão. É o caso em que a UI deve dizer "pagamento pendente"
+  em vez de simplesmente mostrar a conta como gratuita; o acesso volta
+  sozinho quando a cobrança for paga.
 
 Planos: `portfolio`, `free`, `pro`, `agencia`. `limits.*` numérico com valor
 `null` significa ilimitado. `recordingManagement`/`deliveryManagement`/
@@ -1279,29 +1311,43 @@ recorrente via cartão de crédito pra os planos `portfolio`/`pro`/`agencia`.
 |---|---|---|---|---|
 | `POST` | `/billing/checkout` | `owner` | `{ plan: "portfolio"\|"pro"\|"agencia", cycle: "MONTHLY"\|"YEARLY", cpfCnpj, phoneNumber, postalCode, address, addressNumber, complement?, province }` | `{ url }` |
 | `POST` | `/billing/cancel` | `owner` | — | `{ plan: "free" }` |
+| `POST` | `/billing/sync` | `owner` | — | `{ plan }` |
 | `POST` | `/billing/webhooks/asaas` | **sem autenticação** (verificado por token) | payload da Asaas | `{ received: true }` |
 
 - `checkout`: cria uma sessão do **Asaas Checkout** com os dados do owner,
   `cpfCnpj` (só dígitos, 11 = CPF ou 14 = CNPJ), `phoneNumber` (DDD + 10 ou
   11 dígitos), `postalCode` (CEP), endereço, número, complemento opcional e
-  bairro (`province`) e devolve a URL hospedada. O código IBGE da cidade é
-  resolvido pelo backend a partir do CEP.
+  bairro (`province`) e devolve a URL hospedada. A cidade é resolvida pela
+  própria Asaas a partir do CEP.
   O frontend deve **redirecionar** o usuário pra ela; a Asaas coleta o cartão
   de forma compatível com PCI e cria a assinatura recorrente apenas após a
   confirmação. Após a confirmação, a Asaas
   retorna para `<CORS_ORIGIN>/configuracoes/plano?status=sucesso`; o webhook
   continua sendo a fonte de verdade para ativar o plano. `502` se a Asaas estiver
-  fora do ar ou a API key não estiver configurada.
+  fora do ar ou a API key não estiver configurada. `400` se a conta já tem
+  assinatura ativa (é preciso cancelar antes de trocar de plano).
 - `cancel`: cancela a assinatura ativa na Asaas e já rebaixa a conta pra
   `free` na mesma hora (sem período de graça). `400` se a conta não tem
   assinatura ativa.
+- `sync`: reconciliação pontual, para o frontend chamar ao voltar da página
+  hospedada com `status=sucesso`. Consulta a Asaas e ativa o plano se o
+  webhook ainda não tiver chegado. É idempotente e não substitui o webhook.
 - `webhooks/asaas`: endpoint interno, chamado pela Asaas quando o status
-  do pagamento muda — o frontend nunca chama isso diretamente. Ao
-  contrário da Mercado Pago, o payload já vem completo (não precisa
-  buscar o estado na API deles). Nos eventos `PAYMENT_CONFIRMED`/
-  `PAYMENT_RECEIVED`, `Account.plan` é atualizado automaticamente;
-  `GET /plans/me` reflete a mudança assim que o webhook é processado.
-  `401` se o header `asaas-access-token` não bater com o token
+  do pagamento muda — o frontend nunca chama isso diretamente. O payload já
+  vem completo (não precisa buscar o estado na API deles). A conta é
+  encontrada pelo `customer` da cobrança: a Asaas **não** propaga o
+  `externalReference` do Checkout para a assinatura nem para as cobranças
+  que ela cria. Eventos tratados:
+  - `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED`: ativa `Account.plan` com o
+    plano contratado (`Account.asaasPlan`) e grava a assinatura.
+  - `PAYMENT_OVERDUE`: rebaixa pra `free` mas preserva `asaasPlan` — a Asaas
+    segue tentando o cartão e a próxima confirmação restaura o acesso.
+  - `SUBSCRIPTION_DELETED` / `PAYMENT_DELETED` / `PAYMENT_REFUNDED` /
+    `PAYMENT_CHARGEBACK_REQUESTED`: encerra a assinatura e volta pra `free`.
+
+  Contas sem `asaasPlan` (promovidas à mão pelo admin) são ignoradas pelo
+  webhook. `GET /plans/me` reflete a mudança assim que o webhook é
+  processado. `401` se o header `asaas-access-token` não bater com o token
   configurado no registro do webhook.
 
 ---
@@ -1724,6 +1770,7 @@ Resposta:
     {
       "id": "uuid",
       "nome": "Casamento",
+      "capaUrl": "https://... ou null",
       "portfolios": [
         { "id": "uuid", "nome": "Reels para redes sociais", "descricao": "... ou null", "link": "reels-de-verao", "capaUrl": "https://... ou null", "tipoMidiaPredominante": "video" }
       ]
@@ -1735,8 +1782,14 @@ Resposta:
 mais recente primeiro. Cada item de `portfolios[]` é um resumo do álbum
 (sem `videos[]`) — `link` é o `linkPublico` do portfólio, o frontend navega
 pra `GET /public/portfolios/:linkPublico` a partir dele pra abrir o álbum
-completo. `capaUrl` já resolve o mesmo fallback da versão autenticada
-(posterUrl do primeiro item quando nenhuma capa explícita foi setada).
+completo. O `capaUrl` **de cada álbum** já resolve o mesmo fallback da
+versão autenticada (posterUrl do primeiro item quando nenhuma capa
+explícita foi setada).
+
+O `capaUrl` **da categoria** (irmão de `nome`, não confundir com o do
+álbum) é a capa da aba, sem fallback aplicado no backend: quando vem
+`null`, é o frontend que decide — hoje ele cai na capa do primeiro álbum da
+aba.
 
 `tipoMidiaPredominante` (`"video"` | `"foto"`) é o tipo de mídia majoritário
 entre os itens do álbum (maioria simples por contagem de `tipoMidia`) — em
@@ -1775,6 +1828,9 @@ Resposta:
   "comments": [
     { "id": "...", "timestampVideo": 12, "texto": "... ou null (comentário só de áudio)", "audioUrl": "https://... ou null", "autorType": "cliente", "autorNome": "Fulano", "autorUser": null, "parentId": null, "criadoEm": "...", "isAgencyReply": false }
   ],
+  "comentariosVersoesAnteriores": [
+    { "id": "...", "timestampVideo": 6, "texto": "...", "audioUrl": null, "autorType": "cliente", "autorNome": "Fulano", "autorUser": null, "parentId": null, "criadoEm": "...", "versao": 1, "isAgencyReply": false }
+  ],
   "ratings": [
     { "id": "...", "ratingQuestionId": "uuid", "nota": 4, "criadoEm": "..." }
   ],
@@ -1789,6 +1845,12 @@ Resposta:
 }
 ```
 
+- `comentariosVersoesAnteriores`: canal do cliente das versões **anteriores**
+  à entregue (pai, avó, ...), cada item com a `versao` em que foi feito, mais
+  recente primeiro. Subir nova versão não apaga comentário nenhum — cada versão
+  é um vídeo novo e os comentários ficam presos a ela; este campo só os
+  devolve pra tela mostrar recolhidos e só leitura. O `timestampVideo` se
+  refere ao corte antigo. Vazio na v1.
 - **Sempre responde a última versão da cadeia**, mesmo que `:linkPublico`
   seja o de uma versão antiga (ver
   [Resolução de versão](#resolução-de-versão-no-canal-público)). Todos os
