@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InviteStatus, Plan } from '@prisma/client';
+import { InviteStatus, Plan, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PLAN_LIMITS, PlanLimits } from './plan-limits.config';
 
@@ -38,6 +38,13 @@ const LEVEL_FEATURE_LABELS: Record<PlanLevelFeature, string> = {
   deliveryManagement: 'gestao de entregas',
   clientArea: 'area do cliente',
   reports: 'relatorios',
+};
+
+const PLAN_NAMES: Record<Plan, string> = {
+  portfolio: 'Portfólio',
+  free: 'Free',
+  pro: 'Pro',
+  agencia: 'Agência',
 };
 
 @Injectable()
@@ -123,6 +130,18 @@ export class PlansService {
   }
 
   async assertCanInviteEditor(accountId: string): Promise<void> {
+    await this.assertTeamSeatAvailable(accountId, 'convidar');
+  }
+
+  /** Reativar um membro suspenso volta a ocupar uma vaga do plano. */
+  async assertCanReactivateMember(accountId: string): Promise<void> {
+    await this.assertTeamSeatAvailable(accountId, 'reativar');
+  }
+
+  private async assertTeamSeatAvailable(
+    accountId: string,
+    acao: 'convidar' | 'reativar',
+  ): Promise<void> {
     const plan = await this.getPlan(accountId);
     const { maxTeamMembers } = this.limitsFor(plan);
     if (maxTeamMembers === null) return;
@@ -130,7 +149,7 @@ export class PlansService {
     const count = await this.countTeamMembers(accountId);
     if (count >= maxTeamMembers) {
       throw new ForbiddenException(
-        `Limite de ${maxTeamMembers} membros do plano ${plan} atingido. Faca upgrade para convidar mais.`,
+        `Limite de ${maxTeamMembers} membros do plano ${PLAN_NAMES[plan]} atingido (contando convites pendentes). Suspenda um membro, cancele um convite ou faça upgrade para ${acao} mais.`,
       );
     }
   }
@@ -218,11 +237,20 @@ export class PlansService {
   }
 
   /** Membros ativos (qualquer role, inclui owner) + convites pendentes. */
+  // Vaga ocupada = membro ativo + convite pendente ainda valido. Membro
+  // suspenso nao ocupa vaga (nao ha remocao de membro, so suspensao) e
+  // convite vencido nao pode mais ser aceito.
   private async countTeamMembers(accountId: string): Promise<number> {
     const [members, pendingInvites] = await Promise.all([
-      this.prisma.membership.count({ where: { accountId } }),
+      this.prisma.membership.count({
+        where: { accountId, status: UserStatus.ativo },
+      }),
       this.prisma.invite.count({
-        where: { accountId, status: InviteStatus.pendente },
+        where: {
+          accountId,
+          status: InviteStatus.pendente,
+          expiresEm: { gt: new Date() },
+        },
       }),
     ]);
     return members + pendingInvites;
