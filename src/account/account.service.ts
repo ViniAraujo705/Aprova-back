@@ -465,6 +465,13 @@ export class AccountService {
       }
     }
 
+    if (
+      status === UserStatus.ativo &&
+      membership.status === UserStatus.suspenso
+    ) {
+      await this.plans.assertCanReactivateMember(accountId);
+    }
+
     const updated = await this.prisma.membership.update({
       where: { id: membership.id },
       data: { status },
