@@ -36,7 +36,7 @@ export class RecordingEventsController {
   @Post()
   @ApiOperation({ summary: 'Cria um evento no calendario de gravacoes.' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateRecordingEventDto) {
-    return this.recordingEventsService.create(user.accountId, dto);
+    return this.recordingEventsService.create(user.accountId, dto, user.id);
   }
 
   @Get()
