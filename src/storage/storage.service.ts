@@ -207,6 +207,37 @@ export class StorageService {
   }
 
   /**
+   * Envia um stream (ex.: arquivo vindo do Google Drive) para o R2 sob a
+   * key informada, em multipart, sem passar pelo disco. Retorna a URL
+   * publica - no mesmo formato do upload direto do navegador, entao o
+   * resto do fluxo (registro do video, worker) nao distingue a origem.
+   */
+  async uploadStream(
+    key: string,
+    body: Readable,
+    contentType: string,
+    onProgress?: (loadedBytes: number) => void,
+  ): Promise<string> {
+    const upload = new Upload({
+      client: this.client,
+      params: {
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      },
+      queueSize: 4,
+    });
+    if (onProgress) {
+      upload.on('httpUploadProgress', (p) => {
+        if (typeof p.loaded === 'number') onProgress(p.loaded);
+      });
+    }
+    await upload.done();
+    return `${this.publicUrl}/${key}`;
+  }
+
+  /**
    * Verifica se um objeto existe no R2 e retorna seu tamanho, sem baixar
    * o conteudo. Usado para validar uploads diretos do cliente antes de
    * enfileirar o processamento (o cliente pode reportar um urlStorage de
