@@ -27,6 +27,7 @@ import { AppleLoginDto } from './dto/apple-login.dto';
 import { toMemberDto } from '../common/dto/team-role.util';
 import { resolveOwnerBranding } from '../common/account-branding.util';
 import { resolveFrontendUrl } from '../common/frontend-url.util';
+import { initialPlanFor } from '../plans/launch-promo.config';
 
 @Injectable()
 export class AuthService {
@@ -411,6 +412,9 @@ export class AuthService {
       const account = await tx.account.create({
         data: {
           nomeAgencia: params.nomeAgencia ?? params.nome,
+          // Promo de lançamento: cadastro em novembro/2026 já nasce no
+          // plano Agência (ver plans/launch-promo.config.ts).
+          plan: initialPlanFor(),
           ratingQuestions: {
             create: [
               { texto: 'Iluminação', ordem: 0 },
