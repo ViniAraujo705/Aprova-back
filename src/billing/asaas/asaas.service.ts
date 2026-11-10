@@ -3,7 +3,6 @@ import {
   BadRequestException,
   Injectable,
   Logger,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -317,8 +316,13 @@ export class AsaasService {
         if (err.status === 400) {
           throw new BadRequestException(`Asaas recusou o checkout: ${message}`);
         }
+        // 401 aqui e da Asaas recusando a NOSSA chave, nao do usuario. Nao
+        // pode virar 401 na nossa API: o front trata 401 como sessao expirada
+        // e desloga quem so tentou pagar/trocar de plano.
         if (err.status === 401) {
-          throw new UnauthorizedException('Chave de API da Asaas invalida');
+          throw new BadGatewayException(
+            'O sistema de pagamentos está indisponível no momento. Tente novamente mais tarde.',
+          );
         }
       }
       throw new BadGatewayException(`Falha ao ${action} na Asaas: ${message}`);
