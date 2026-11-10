@@ -18,6 +18,7 @@ import {
 } from '../auth/decorators/current-user.decorator';
 import { AsaasWebhookBody, BillingService } from './billing.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
+import { ChangePlanDto } from './dto/change-plan.dto';
 
 @ApiTags('billing')
 @Controller('billing')
@@ -44,6 +45,15 @@ export class BillingController {
       dto.complement,
       dto.province,
     );
+  }
+
+  /** Sobe/desce de plano na assinatura ja paga, sem novo checkout. */
+  @Post('change-plan')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner)
+  changePlan(@CurrentUser() user: AuthUser, @Body() dto: ChangePlanDto) {
+    return this.billingService.changePlan(user.accountId, dto.plan);
   }
 
   @Post('cancel')
