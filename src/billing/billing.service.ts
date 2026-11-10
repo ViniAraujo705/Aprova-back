@@ -155,24 +155,52 @@ export class BillingService {
       },
     });
 
-    if (!account.asaasSubscriptionId || !account.asaasPlan) {
+    if (!account.asaasSubscriptionId) {
       throw new BadRequestException(
         'Esta conta nao tem assinatura ativa. Assine um plano pelo checkout.',
       );
     }
+    // Assinaturas antigas nao gravavam asaasPlan: o plano em vigor e o
+    // contratado.
+    const currentPlan = account.asaasPlan ?? account.plan;
     // Cobranca vencida: o plano em vigor caiu pra free ate o pagamento.
     // Trocar de plano agora liberaria acesso sem pagar.
-    if (account.plan !== account.asaasPlan) {
+    if (account.asaasPlan && account.plan !== account.asaasPlan) {
       throw new BadRequestException(
         'Há uma cobrança em aberto. Regularize o pagamento antes de trocar de plano.',
       );
     }
-    if (account.asaasPlan === plan) {
+    if (currentPlan === plan) {
       throw new BadRequestException('Esta conta ja esta neste plano.');
     }
 
+    // A Asaas e a fonte da verdade: confirma que a assinatura existe e esta
+    // ativa, e le o ciclo dela (o banco pode nao ter, em assinatura antiga).
+    const remote = await this.asaas.getSubscription(
+      account.asaasSubscriptionId,
+    );
+    if (!remote) {
+      // A Asaas nao conhece esse id (removida no painel ou id legado de outro
+      // ambiente). Sem limpar, a conta ficaria presa: aqui pede checkout e o
+      // checkout recusa por "ja possui assinatura". O plano em vigor fica.
+      await this.prisma.account.update({
+        where: { id: accountId },
+        data: { asaasSubscriptionId: null },
+      });
+      this.logger.warn(
+        `Conta ${accountId}: assinatura ${account.asaasSubscriptionId} nao existe na Asaas, vinculo removido`,
+      );
+      throw new BadRequestException(
+        'Não encontramos sua assinatura na Asaas. Assine o plano novo pelo checkout.',
+      );
+    }
+    if (remote.status && remote.status !== 'ACTIVE') {
+      throw new BadRequestException(
+        'Sua assinatura não está ativa na Asaas. Assine o plano novo pelo checkout.',
+      );
+    }
     const cycle: BillableCycle =
-      account.asaasCycle === 'YEARLY' ? 'YEARLY' : 'MONTHLY';
+      (remote.cycle ?? account.asaasCycle) === 'YEARLY' ? 'YEARLY' : 'MONTHLY';
     const def = PLAN_BILLING[plan][cycle];
     await this.asaas.updateSubscription(account.asaasSubscriptionId, {
       value: def.value,
@@ -181,11 +209,11 @@ export class BillingService {
 
     const updated = await this.prisma.account.update({
       where: { id: accountId },
-      data: { plan, asaasPlan: plan },
+      data: { plan, asaasPlan: plan, asaasCycle: cycle },
       select: { plan: true },
     });
     this.logger.log(
-      `Conta ${accountId} trocou de ${account.asaasPlan} para ${plan} (${cycle})`,
+      `Conta ${accountId} trocou de ${currentPlan} para ${plan} (${cycle})`,
     );
     return { plan: updated.plan };
   }
