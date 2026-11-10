@@ -40,6 +40,7 @@ interface AsaasPayment {
 interface AsaasSubscription {
   id: string;
   status?: string;
+  cycle?: string;
 }
 
 class AsaasRequestError extends Error {
@@ -188,6 +189,28 @@ export class AsaasService {
         this.logger.warn(
           `Assinatura ${id} nao existe nesta conta Asaas, tratando como cancelada`,
         );
+      }
+    });
+  }
+
+  /**
+   * Estado atual da assinatura na Asaas (fonte da verdade do ciclo e de se
+   * ela ainda existe). `null` quando a Asaas nao conhece o id — assinatura
+   * removida no painel ou id legado de outro ambiente.
+   */
+  async getSubscription(
+    id: string,
+  ): Promise<{ status: string | null; cycle: string | null } | null> {
+    return this.run('consultar assinatura', async () => {
+      try {
+        const sub = await this.request<
+          AsaasSubscription & { deleted?: boolean }
+        >('GET', `/subscriptions/${id}`);
+        if (sub.deleted) return null;
+        return { status: sub.status ?? null, cycle: sub.cycle ?? null };
+      } catch (err) {
+        if (err instanceof AsaasRequestError && err.status === 404) return null;
+        throw err;
       }
     });
   }
