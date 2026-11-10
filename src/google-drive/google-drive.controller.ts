@@ -1,10 +1,14 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
   Logger,
+  Param,
+  ParseUUIDPipe,
+  Post,
   Query,
   Res,
   UseGuards,
@@ -31,6 +35,8 @@ import { GoogleDriveOAuthService } from './google-drive-oauth.service';
 import { GoogleDriveService } from './google-drive.service';
 import { GoogleDriveStatusDto } from './dto/google-drive-status.dto';
 import { ListGoogleDriveItemsQueryDto } from './dto/list-google-drive-items-query.dto';
+import { ImportGoogleDriveFileDto } from './dto/import-google-drive-file.dto';
+import { GoogleDriveImportService } from './import/google-drive-import.service';
 import { resolveFrontendUrl } from '../common/frontend-url.util';
 
 const STATE_PURPOSE = 'gdrive-connect';
@@ -46,7 +52,36 @@ export class GoogleDriveController {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly imports: GoogleDriveImportService,
   ) {}
+
+  @Post('import')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner, UserRole.editor)
+  @ApiOperation({
+    summary:
+      'Importa um video do Drive conectado para aprovacao no projeto (Drive -> R2 em background). Retorna importId para acompanhar.',
+  })
+  startImport(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ImportGoogleDriveFileDto,
+  ) {
+    return this.imports.start(user, dto);
+  }
+
+  @Get('import/:importId')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner, UserRole.editor)
+  @ApiOperation({ summary: 'Andamento de uma importacao do Drive.' })
+  importStatus(
+    @CurrentUser() user: AuthUser,
+    @Param('importId', new ParseUUIDPipe({ version: '4' })) importId: string,
+  ) {
+    return this.imports.status(user, importId);
+  }
 
   @Get('connect')
   @ApiBearerAuth()
