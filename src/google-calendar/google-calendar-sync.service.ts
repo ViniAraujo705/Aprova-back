@@ -72,9 +72,7 @@ export class GoogleCalendarSyncService {
             where: { userId: row.userId },
           });
         if (!connection) continue;
-        const accessToken = await this.oauth.getValidAccessToken(
-          connection.refreshTokenEnc,
-        );
+        const accessToken = await this.tokenFor(connection);
         await this.oauth.deleteEvent(accessToken, row.googleEventId);
       } catch (err) {
         this.logFailure('apagar', row.googleEventId, err);
@@ -83,7 +81,10 @@ export class GoogleCalendarSyncService {
   }
 
   private resolveRecipients(event: RawRecordingEvent): string[] {
+    // Quem criou tambem recebe: sem isso, criar uma reuniao sem se escalar
+    // como responsavel nao aparecia no Google Agenda de quem criou.
     const ids = [
+      event.criadoPorId,
       event.membroId,
       ...event.equipe.map((e) => e.crewMember.userId),
     ].filter((id): id is string => !!id);
@@ -117,9 +118,7 @@ export class GoogleCalendarSyncService {
         where: { userId },
       });
       if (!connection) return;
-      const accessToken = await this.oauth.getValidAccessToken(
-        connection.refreshTokenEnc,
-      );
+      const accessToken = await this.tokenFor(connection);
       const created = await this.oauth.insertEvent(
         accessToken,
         this.toPayload(event),
@@ -160,9 +159,7 @@ export class GoogleCalendarSyncService {
         await this.createForRecipient(event, userId);
         return;
       }
-      const accessToken = await this.oauth.getValidAccessToken(
-        connection.refreshTokenEnc,
-      );
+      const accessToken = await this.tokenFor(connection);
       await this.oauth.updateEvent(
         accessToken,
         sync.googleEventId,
@@ -190,12 +187,36 @@ export class GoogleCalendarSyncService {
         });
       }
       if (!connection || !sync) return;
-      const accessToken = await this.oauth.getValidAccessToken(
-        connection.refreshTokenEnc,
-      );
+      const accessToken = await this.tokenFor(connection);
       await this.oauth.deleteEvent(accessToken, sync.googleEventId);
     } catch (err) {
       this.logFailure('remover destinatario de', recordingEventId, err);
+    }
+  }
+
+  /**
+   * Access token do destinatario. Se o Google recusar o refresh token
+   * (invalid_grant: revogado, senha trocada ou expirado - no modo de teste do
+   * OAuth ele vence em 7 dias), a conexao morta e removida: a tela passa a
+   * mostrar "Conectar" de novo em vez de "conectado" sem sincronizar nada.
+   */
+  private async tokenFor(connection: {
+    id: string;
+    userId: string;
+    refreshTokenEnc: string;
+  }): Promise<string> {
+    try {
+      return await this.oauth.getValidAccessToken(connection.refreshTokenEnc);
+    } catch (err) {
+      if (isInvalidGrant(err)) {
+        await this.prisma.googleCalendarConnection
+          .delete({ where: { id: connection.id } })
+          .catch(() => undefined);
+        this.logger.warn(
+          `Conexao do Google Agenda do usuario ${connection.userId} expirou (invalid_grant) - removida; ele precisa conectar de novo.`,
+        );
+      }
+      throw err;
     }
   }
 
@@ -205,4 +226,15 @@ export class GoogleCalendarSyncService {
       `Sync com Google Calendar falhou ao ${action} (ref ${ref}): ${message}`,
     );
   }
+}
+
+function isInvalidGrant(err: unknown): boolean {
+  const e = err as {
+    message?: string;
+    response?: { data?: { error?: string } };
+  };
+  return (
+    e?.response?.data?.error === 'invalid_grant' ||
+    (typeof e?.message === 'string' && e.message.includes('invalid_grant'))
+  );
 }

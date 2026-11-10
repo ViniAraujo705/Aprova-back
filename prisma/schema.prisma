@@ -256,6 +256,7 @@ model User {
   notifications             Notification[]
   sessions                  Session[]
   recordingEvents           RecordingEvent[]
+  recordingEventsCriados    RecordingEvent[]           @relation("RecordingEventCriador")
   // Projetos aos quais este usuario (editor) foi atribuido
   projectMemberships        ProjectMember[]
   // Demandas (cards do board Kanban) atribuidas a este usuario
@@ -382,6 +383,9 @@ model RecordingEvent {
   dataFim     DateTime?          @map("data_fim")
   clienteId   String?            @map("cliente_id")
   membroId    String?            @map("membro_id")
+  // Quem criou o evento: tambem recebe no proprio Google Agenda (alem do
+  // responsavel e da equipe). Nulo nos eventos anteriores a esta coluna.
+  criadoPorId String?            @map("criado_por_id")
   demandaId   String?            @map("demanda_id")
   observacoes String?
   criadoEm    DateTime           @default(now()) @map("criado_em")
@@ -389,6 +393,7 @@ model RecordingEvent {
   account       Account                    @relation(fields: [accountId], references: [id], onDelete: Cascade)
   cliente       Client?                    @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   membro        User?                      @relation(fields: [membroId], references: [id], onDelete: SetNull)
+  criadoPor     User?                      @relation("RecordingEventCriador", fields: [criadoPorId], references: [id], onDelete: SetNull)
   demanda       Demanda?                   @relation(fields: [demandaId], references: [id], onDelete: SetNull)
   notifications Notification[]
   equipe        RecordingEventCrew[]

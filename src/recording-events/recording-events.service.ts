@@ -20,6 +20,7 @@ const RECORDING_EVENT_SELECT = {
   dataFim: true,
   clienteId: true,
   membroId: true,
+  criadoPorId: true,
   demandaId: true,
   observacoes: true,
   cliente: { select: { nome: true } },
@@ -37,6 +38,7 @@ export type RawRecordingEvent = {
   dataFim: Date | null;
   clienteId: string | null;
   membroId: string | null;
+  criadoPorId: string | null;
   demandaId: string | null;
   observacoes: string | null;
   cliente: { nome: string } | null;
@@ -67,7 +69,11 @@ export class RecordingEventsService {
     private readonly plans: PlansService,
   ) {}
 
-  async create(accountId: string, dto: CreateRecordingEventDto) {
+  async create(
+    accountId: string,
+    dto: CreateRecordingEventDto,
+    criadoPorId?: string,
+  ) {
     await this.plans.assertLevelFeature(accountId, 'recordingManagement');
     await this.assertRefsBelongToAccount(accountId, dto);
     const equipeIds = dto.equipeIds ? dedupe(dto.equipeIds) : [];
@@ -82,6 +88,7 @@ export class RecordingEventsService {
         dataFim: dto.dataFim ? new Date(dto.dataFim) : null,
         clienteId: dto.clienteId ?? null,
         membroId: dto.membroId ?? null,
+        criadoPorId: criadoPorId ?? null,
         demandaId,
         observacoes: dto.observacoes ?? null,
         ...(equipeIds.length
