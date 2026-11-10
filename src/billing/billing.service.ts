@@ -135,6 +135,62 @@ export class BillingService {
   }
 
   /**
+   * Sobe ou desce de plano dentro da assinatura ja paga: muda o valor da
+   * mesma assinatura na Asaas e libera o plano novo na hora. Sem cartao novo
+   * e sem segunda assinatura (o que cobraria duas vezes). A diferenca do
+   * mes corrente nao e cobrada — a proxima fatura ja vem no valor novo.
+   * Mantem o ciclo atual: trocar mensal <-> anual nao passa por aqui.
+   */
+  async changePlan(
+    accountId: string,
+    plan: BillablePlan,
+  ): Promise<{ plan: Plan }> {
+    const account = await this.prisma.account.findUniqueOrThrow({
+      where: { id: accountId },
+      select: {
+        plan: true,
+        asaasPlan: true,
+        asaasCycle: true,
+        asaasSubscriptionId: true,
+      },
+    });
+
+    if (!account.asaasSubscriptionId || !account.asaasPlan) {
+      throw new BadRequestException(
+        'Esta conta nao tem assinatura ativa. Assine um plano pelo checkout.',
+      );
+    }
+    // Cobranca vencida: o plano em vigor caiu pra free ate o pagamento.
+    // Trocar de plano agora liberaria acesso sem pagar.
+    if (account.plan !== account.asaasPlan) {
+      throw new BadRequestException(
+        'Há uma cobrança em aberto. Regularize o pagamento antes de trocar de plano.',
+      );
+    }
+    if (account.asaasPlan === plan) {
+      throw new BadRequestException('Esta conta ja esta neste plano.');
+    }
+
+    const cycle: BillableCycle =
+      account.asaasCycle === 'YEARLY' ? 'YEARLY' : 'MONTHLY';
+    const def = PLAN_BILLING[plan][cycle];
+    await this.asaas.updateSubscription(account.asaasSubscriptionId, {
+      value: def.value,
+      description: def.description,
+    });
+
+    const updated = await this.prisma.account.update({
+      where: { id: accountId },
+      data: { plan, asaasPlan: plan },
+      select: { plan: true },
+    });
+    this.logger.log(
+      `Conta ${accountId} trocou de ${account.asaasPlan} para ${plan} (${cycle})`,
+    );
+    return { plan: updated.plan };
+  }
+
+  /**
    * Cancela a assinatura ativa e ja rebaixa a conta pra free na hora (sem
    * esperar o webhook). O webhook de cancelamento que chegar depois e
    * inofensivo (so confirma o que ja foi feito aqui).

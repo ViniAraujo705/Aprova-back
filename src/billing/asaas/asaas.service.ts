@@ -193,6 +193,24 @@ export class AsaasService {
   }
 
   /**
+   * Troca valor/descricao de uma assinatura existente (subir ou descer de
+   * plano). `updatePendingPayments` tambem corrige a cobranca ja gerada e
+   * ainda nao paga, entao a proxima fatura sai no valor novo.
+   */
+  async updateSubscription(
+    id: string,
+    data: { value: number; description: string },
+  ): Promise<void> {
+    await this.run('trocar o plano da assinatura', async () => {
+      await this.request('PUT', `/subscriptions/${id}`, {
+        value: data.value,
+        description: data.description,
+        updatePendingPayments: true,
+      });
+    });
+  }
+
+  /**
    * Invalida uma sessão de checkout ainda aberta. Best-effort: uma sessão já
    * paga, expirada ou cancelada devolve erro, e isso não deve impedir o
    * assinante de abrir um checkout novo.
