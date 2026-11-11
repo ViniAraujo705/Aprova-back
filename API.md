@@ -951,9 +951,14 @@ Autenticado — **somente `owner`**.
 Exige `limits.teamPerformance` (plano `agencia`) — `403 Forbidden` nos
 demais planos, mesmo chamando a API direto (o bloqueio não é só de UI).
 
-Um item por editor (role `editor`) **com pelo menos um vídeo atribuído**
-(via [`PATCH /videos/:id/editor-responsavel`](#patch-videosideditor-responsavel)),
-independente do status desse vídeo.
+Query opcional: `de` e `ate` (ISO 8601) filtram pela **data de aprovação**
+(`de` inclusivo, `ate` exclusivo). Sem os dois: desde sempre (é o que o
+dashboard mensal usa). `400` se `de >= ate`.
+
+Um item por pessoa: todo editor ativo (mesmo sem dados) e os owners que são
+responsáveis por algum vídeo. Cada **cadeia de versões** (vídeo raiz + novas
+versões) conta como uma entrega: status, nota e aprovação vêm da versão mais
+recente; os responsáveis são a união dos responsáveis de todas as versões.
 
 Resposta:
 ```json
@@ -961,24 +966,41 @@ Resposta:
   {
     "editorId": "uuid",
     "nome": "Marina Alves",
-    "avatarUrl": null,
+    "avatarUrl": "https://...",
+    "papel": "editor",
     "notaMedia": 8.6,
     "videosAprovadosCount": 12,
-    "faixa": "verde"
+    "faixa": "verde",
+    "mediaVersoes": 1.4,
+    "aprovadosDePrimeira": 8,
+    "aprovadosComPrazo": 10,
+    "aprovadosNoPrazo": 9,
+    "notaMediaAnterior": 7.9,
+    "emAndamento": 3,
+    "emAjuste": 1,
+    "atrasados": 0,
+    "videos": [
+      { "videoId": "uuid", "nome": "reels-01.mp4", "projetoNome": "Campanha X",
+        "nota": 10, "versoes": 1, "aprovadoEm": "2026-11-03T14:00:00.000Z", "noPrazo": true }
+    ]
   }
 ]
 ```
-- `videosAprovadosCount`: total de vídeos com `status: aprovado` atribuídos
-  a esse editor (com ou sem `notaGeral`).
-- `notaMedia`: média de `notaGeral` (1–5) apenas dos vídeos aprovados **que
-  receberam nota geral na aprovação**, normalizada para escala **0–10**
-  (`média × 2`, arredondada a 1 casa). `null` se nenhum vídeo aprovado desse
-  editor tem `notaGeral` ainda.
-- `faixa`: `sem_dados` (`notaMedia === null`) · `vermelho` (`< 4`) ·
-  `laranja` (`4 ≤ x < 6`) · `amarelo` (`6 ≤ x < 8`) · `verde` (`≥ 8`).
-- `avatarUrl`: sempre `null` hoje — este endpoint específico não lê o
-  `fotoUrl` do usuário ainda (o upload em si já existe, ver seção
-  [Perfil](#perfil-usersme)); placeholder para conectar futuramente.
+Do período:
+- `videosAprovadosCount`: entregas aprovadas no período (com ou sem nota).
+- `notaMedia`: média de `notaGeral` (1–5) × 2, escala **0–10**, 1 casa.
+  `null` sem nenhuma aprovação com nota.
+- `faixa`: `sem_dados` · `vermelho` (`< 4`) · `laranja` (`< 6`) ·
+  `amarelo` (`< 8`) · `verde` (`≥ 8`).
+- `mediaVersoes` / `aprovadosDePrimeira`: versões até aprovar.
+- `aprovadosComPrazo` / `aprovadosNoPrazo`: no prazo = a versão aprovada foi
+  enviada até o fim do dia do prazo (mede a entrega, não a demora do cliente).
+- `notaMediaAnterior`: mesma métrica no período anterior de mesmo tamanho
+  (`null` sem `de` ou sem dados).
+- `videos`: aprovados do período, mais recentes primeiro (máx. 50).
+
+De agora (ignoram o período): `emAndamento` (não aprovados), `emAjuste`
+(cliente pediu ajuste) e `atrasados` (em andamento com prazo vencido).
 
 ---
 
