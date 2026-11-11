@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { UserRole, UserStatus, VideoStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { agruparCadeias, DIA_MS } from '../common/video-chains.util';
 
 export type Faixa = 'verde' | 'amarelo' | 'laranja' | 'vermelho' | 'sem_dados';
 
@@ -50,7 +51,6 @@ export interface EditorPerformance {
   videos: EditorPerformanceVideo[];
 }
 
-const DIA_MS = 24 * 60 * 60 * 1000;
 const MAX_VIDEOS_POR_PESSOA = 50;
 
 /** Uma cadeia de versoes (raiz + novas versoes) tratada como uma entrega so. */
@@ -249,7 +249,7 @@ export class TeamService {
       });
   }
 
-  /** Agrupa as versoes pela raiz da cadeia (segue video_pai_id). */
+  /** Agrupa as versoes pela raiz da cadeia (ver agruparCadeias). */
   private montarCadeias(
     videos: {
       id: string;
@@ -265,36 +265,7 @@ export class TeamService {
       responsaveis: { userId: string }[];
     }[],
   ): Cadeia[] {
-    const porId = new Map(videos.map((v) => [v.id, v]));
-    const raizCache = new Map<string, string>();
-    const raizDe = (id: string): string => {
-      const cached = raizCache.get(id);
-      if (cached) return cached;
-      const visitados = new Set<string>();
-      let atual = porId.get(id)!;
-      while (
-        atual.videoPaiId &&
-        porId.has(atual.videoPaiId) &&
-        !visitados.has(atual.videoPaiId)
-      ) {
-        visitados.add(atual.id);
-        atual = porId.get(atual.videoPaiId)!;
-      }
-      raizCache.set(id, atual.id);
-      return atual.id;
-    };
-
-    const grupos = new Map<string, typeof videos>();
-    for (const v of videos) {
-      const raiz = raizDe(v.id);
-      const g = grupos.get(raiz) ?? [];
-      g.push(v);
-      grupos.set(raiz, g);
-    }
-
-    const cadeias: Cadeia[] = [];
-    for (const versoes of grupos.values()) {
-      versoes.sort((a, b) => a.criadoEm.getTime() - b.criadoEm.getTime());
+    return agruparCadeias(videos).map((versoes) => {
       const ultima = versoes[versoes.length - 1];
       // Prazo da versao mais recente; nova versao nao herda o prazo, entao
       // cai para o ultimo prazo definido na cadeia.
@@ -304,7 +275,7 @@ export class TeamService {
       for (const v of versoes) {
         for (const r of v.responsaveis) responsaveis.add(r.userId);
       }
-      cadeias.push({
+      return {
         ultima: {
           id: ultima.id,
           nomeArquivo: ultima.nomeArquivo,
@@ -318,9 +289,8 @@ export class TeamService {
         versoes: versoes.length,
         prazo,
         responsaveis,
-      });
-    }
-    return cadeias;
+      };
+    });
   }
 
   private periodoAnterior(p: PerformancePeriodo): PerformancePeriodo | null {

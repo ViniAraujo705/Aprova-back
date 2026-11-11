@@ -1572,6 +1572,40 @@ nenhum vídeo aprovado na conta.
 
 ---
 
+## Relatório de produtividade (`/reports/productivity`)
+
+`GET /reports/productivity?de=&ate=` — `owner`. Tudo agregado no backend a
+partir das **cadeias de versões** (vídeo raiz + novas versões = uma entrega).
+`de` inclusivo, `ate` exclusivo (ISO 8601); sem eles, desde sempre. `400` se
+`de >= ate` ou data inválida. Vídeos de exemplo ficam de fora.
+
+- `periodo`: `{ de, ate, temAnterior }`.
+- `resumo` (do período): `enviados` (pela data do primeiro envio),
+  `enviadosAnterior`; pela data de aprovação: `aprovados`, `notaMedia` (0–10),
+  `avaliados`, `aprovadosDePrimeira`, `mediaVersoes`,
+  `horasAteAprovarMediana`/`Media` (primeiro envio → aprovação),
+  `aprovadosComPrazo`/`NoPrazo` (versão aprovada enviada até o fim do dia do
+  prazo), `comentariosClientePorEntrega`. `anterior`: o mesmo bloco para a
+  janela anterior de mesmo tamanho (`null` sem `de`).
+- `agora` (sem período): `emAberto`, `esperandoCliente` (status `pendente`),
+  `emAjuste`, `atrasados`, `porEtapa` (`[{ etapa, total }]` das etapas em
+  fluxo do Kanban), `atrasadosLista` (até 20, `diasAtraso`) e
+  `esperandoLista` (até 10, `diasEsperando` desde a última versão).
+- `mensal`: últimos 12 meses (horário de Brasília)
+  `[{ mes: "2026-11", enviados, aprovados, notaMedia }]`.
+- `distribuicaoNotas`: `[{ estrelas: 1..5, total }]` das aprovações do período.
+- `tempoAprovacao`: `[{ faixa, total }]` com faixas `ate_1d`, `1_3d`, `3_7d`,
+  `7_14d`, `mais_14d`.
+- `clientes`: por cliente (projeto avulso agrupa pelo contato) —
+  `enviados`, `aprovados`, `notaMedia`, `mediaVersoes`,
+  `horasAteAprovarMediana`, `aprovadosComPrazo`, `aprovadosNoPrazo`,
+  `emAberto`, `esperandoCliente`, `atrasados`.
+- `equipe`: editores ativos e owners com atividade — `aprovados`,
+  `notaMedia`, `emAberto`, `atrasados`, `gravacoes` (eventos do calendário no
+  período em que a pessoa é o membro ou está na equipe).
+
+---
+
 ## Relatório do projeto (PDF)
 Autenticado — roles `owner`, `editor`.
 
