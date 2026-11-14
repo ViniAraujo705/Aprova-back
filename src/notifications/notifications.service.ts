@@ -311,6 +311,49 @@ export class NotificationsService {
   }
 
   /**
+   * Comentario novo num card: quem foi marcado com @ recebe `mencao_demanda`;
+   * responsavel/colaboradores que nao foram marcados recebem
+   * `comentario_demanda`. O autor nunca e avisado do proprio comentario.
+   */
+  async notifyComentarioDemanda(
+    accountId: string,
+    demandaId: string,
+    comentarioId: string,
+    mencionados: string[],
+    membrosDoCard: (string | null | undefined)[],
+    autorId: string,
+  ): Promise<void> {
+    try {
+      const marcados = new Set(mencionados.filter((id) => id !== autorId));
+      const membros = [
+        ...new Set(membrosDoCard.filter((id): id is string => !!id)),
+      ].filter((id) => id !== autorId && !marcados.has(id));
+      const data = [
+        ...[...marcados].map((userId) => ({
+          userId,
+          type: NotificationType.mencao_demanda,
+        })),
+        ...membros.map((userId) => ({
+          userId,
+          type: NotificationType.comentario_demanda,
+        })),
+      ].map((n) => ({
+        ...n,
+        accountId,
+        demandaId,
+        chave: `comentario_demanda:${comentarioId}`,
+      }));
+      if (data.length === 0) return;
+      await this.prisma.notification.createMany({ data, skipDuplicates: true });
+    } catch (err) {
+      this.logger.error(
+        `Falha ao notificar comentario da demanda ${demandaId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+  }
+
+  /**
    * Cron: prazos (videos e demandas) vencendo nas proximas 24h ou que
    * acabaram de vencer, e videos esperando o cliente ha 3 dias. Cada aviso
    * tem uma `chave` unica por pessoa (o prazo entra na chave: se o prazo
@@ -402,6 +445,9 @@ export class NotificationsService {
       where: {
         prazo: { gt: from, lte: to },
         etapa: { notIn: ETAPAS_CONCLUIDAS },
+        // Arquivada ou com prazo marcado como cumprido nao gera alerta.
+        arquivadaEm: null,
+        prazoConcluido: false,
       },
       select: {
         id: true,

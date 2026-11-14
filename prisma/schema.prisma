@@ -158,6 +158,10 @@ enum NotificationType {
   // Lembrete de gravacao proxima (RecordingEvent) - so pro owner, ver
   // NotificationsService.sendRecordingReminders.
   lembrete_gravacao
+  // Alguem marcou a pessoa (@nome) num comentario de card do Kanban.
+  mencao_demanda
+  // Comentario novo num card em que a pessoa e responsavel/colaboradora.
+  comentario_demanda
 }
 
 // Conta = agencia. Agrupa os usuarios (owner + editores) e todos os
@@ -206,6 +210,7 @@ model Account {
   clientActivities    ClientActivity[]
   clientFiles         ClientFile[]
   labels              Label[]
+  quadros             Quadro[]
   clientFields        ClientField[]
   checkDayNotes       CheckDayNote[]
 
@@ -275,6 +280,9 @@ model User {
   driveItemsVinculados      ProjectGoogleDriveItem[]
   videoCollaborations       VideoCollaborator[]
   demandaCollaborations     DemandaCollaborator[]
+  demandaComentarios        DemandaComentario[]
+  demandaAtividades         DemandaAtividade[]
+  demandaAnexos             DemandaAnexo[]
 
   @@map("users")
 }
@@ -793,6 +801,20 @@ model Demanda {
   // Referencia opcional a um Video - nao usado hoje, deixa a porta aberta
   // pra uma demanda "virar" ou apontar pra um video especifico no futuro.
   videoId       String?       @map("video_id")
+  // Campos do card estilo Trello: texto livre, posicao manual dentro da
+  // coluna (Float para inserir entre dois cards sem renumerar), arquivamento
+  // (some do quadro mas nao e apagado) e prazo marcado como cumprido.
+  descricao      String?
+  posicao        Float         @default(0)
+  arquivadaEm    DateTime?     @map("arquivada_em")
+  prazoConcluido Boolean       @default(false) @map("prazo_concluido")
+  // Anexo de imagem usado como capa do card (sem FK: ao apagar o anexo o
+  // servico limpa o campo).
+  capaAnexoId    String?       @map("capa_anexo_id")
+  // Quadro extra (livre) do card. null = quadro de producao, que usa `etapa`
+  // como coluna; num quadro extra a coluna e `colunaId` e `etapa` e ignorada.
+  quadroId       String?       @map("quadro_id")
+  colunaId       String?       @map("coluna_id")
   criadoEm      DateTime      @default(now()) @map("criado_em")
   atualizadoEm  DateTime      @updatedAt @map("atualizado_em")
 
@@ -804,8 +826,15 @@ model Demanda {
   labels          DemandaLabel[]
   notifications   Notification[]
   collaborators   DemandaCollaborator[]
+  checklist       DemandaChecklistItem[]
+  comentarios     DemandaComentario[]
+  atividades      DemandaAtividade[]
+  anexos          DemandaAnexo[]
+  quadro          Quadro?               @relation(fields: [quadroId], references: [id], onDelete: Cascade)
+  coluna          QuadroColuna?         @relation(fields: [colunaId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
+  @@index([quadroId])
   @@index([clienteId])
   @@index([responsavelId])
   @@index([videoId])
@@ -883,6 +912,107 @@ model VideoResponsavel {
   @@id([videoId, userId])
   @@index([userId])
   @@map("video_responsaveis")
+}
+
+// Comentario da equipe num card do Kanban (como no Trello).
+model DemandaComentario {
+  id          String    @id @default(uuid())
+  demandaId   String    @map("demanda_id")
+  // Null quando o autor saiu da conta: o comentario fica, sem nome.
+  autorId     String?   @map("autor_id")
+  texto       String
+  // Ids dos membros marcados com @ (ja validados como da conta).
+  mencionados String[]  @default([])
+  criadoEm    DateTime  @default(now()) @map("criado_em")
+  editadoEm   DateTime? @map("editado_em")
+
+  demanda Demanda @relation(fields: [demandaId], references: [id], onDelete: Cascade)
+  autor   User?   @relation(fields: [autorId], references: [id], onDelete: SetNull)
+
+  @@index([demandaId, criadoEm])
+  @@map("demanda_comentarios")
+}
+
+// Historico do card ("Marina moveu para Edicao"). `tipo` e livre de proposito
+// (criou, moveu, titulo, responsavel, prazo, prazo_cumprido, arquivou,
+// desarquivou, checklist_feito) e `dados` guarda o antes/depois.
+model DemandaAtividade {
+  id        String   @id @default(uuid())
+  demandaId String   @map("demanda_id")
+  autorId   String?  @map("autor_id")
+  tipo      String
+  dados     Json?
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  demanda Demanda @relation(fields: [demandaId], references: [id], onDelete: Cascade)
+  autor   User?   @relation(fields: [autorId], references: [id], onDelete: SetNull)
+
+  @@index([demandaId, criadoEm])
+  @@map("demanda_atividades")
+}
+
+// Quadro extra do Kanban com colunas livres (o quadro de producao, com as 7
+// etapas fixas, nao e uma linha aqui).
+model Quadro {
+  id        String   @id @default(uuid())
+  accountId String   @map("account_id")
+  nome      String
+  posicao   Float    @default(0)
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  account  Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  colunas  QuadroColuna[]
+  demandas Demanda[]
+
+  @@index([accountId])
+  @@map("quadros")
+}
+
+model QuadroColuna {
+  id       String   @id @default(uuid())
+  quadroId String   @map("quadro_id")
+  nome     String
+  posicao  Float    @default(0)
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  quadro   Quadro    @relation(fields: [quadroId], references: [id], onDelete: Cascade)
+  demandas Demanda[]
+
+  @@index([quadroId])
+  @@map("quadro_colunas")
+}
+
+// Arquivo anexado a um card do Kanban (upload direto ao R2, pasta demanda-anexos).
+model DemandaAnexo {
+  id           String   @id @default(uuid())
+  demandaId    String   @map("demanda_id")
+  nomeArquivo  String   @map("nome_arquivo")
+  urlStorage   String   @map("url_storage")
+  mimeType     String   @map("mime_type")
+  tamanhoBytes Int?     @map("tamanho_bytes")
+  enviadoPorId String?  @map("enviado_por_id")
+  criadoEm     DateTime @default(now()) @map("criado_em")
+
+  demanda    Demanda @relation(fields: [demandaId], references: [id], onDelete: Cascade)
+  enviadoPor User?   @relation(fields: [enviadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([demandaId])
+  @@map("demanda_anexos")
+}
+
+// Item de checklist de um card do Kanban (como no Trello: um checklist por card).
+model DemandaChecklistItem {
+  id        String   @id @default(uuid())
+  demandaId String   @map("demanda_id")
+  texto     String
+  concluido Boolean  @default(false)
+  posicao   Float    @default(0)
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  demanda Demanda @relation(fields: [demandaId], references: [id], onDelete: Cascade)
+
+  @@index([demandaId])
+  @@map("demanda_checklist_itens")
 }
 
 model DemandaCollaborator {
