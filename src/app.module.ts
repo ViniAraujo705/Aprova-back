@@ -35,6 +35,7 @@ import { GoogleDriveModule } from './google-drive/google-drive.module';
 import { ClientActivityModule } from './client-activity/client-activity.module';
 import { ClientFilesModule } from './client-files/client-files.module';
 import { LabelsModule } from './labels/labels.module';
+import { QuadrosModule } from './quadros/quadros.module';
 import { ClientFieldsModule } from './client-fields/client-fields.module';
 import { CheckDayNotesModule } from './checkday/checkday-notes.module';
 import { bullmqConnectionFactory } from './queue/bullmq-connection';
@@ -106,6 +107,7 @@ import { validateFrontendUrl } from './common/frontend-url.util';
     ClientActivityModule,
     ClientFilesModule,
     LabelsModule,
+    QuadrosModule,
     ClientFieldsModule,
     CheckDayNotesModule,
   ],

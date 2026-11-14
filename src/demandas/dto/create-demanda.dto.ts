@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
 } from 'class-validator';
 import { DemandaTipo, EtapaProducao } from '@prisma/client';
 
@@ -33,11 +34,26 @@ export class CreateDemandaDto {
   prazo?: string | null;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  descricao?: string | null;
+
+  @IsOptional()
   @IsEnum(EtapaProducao, {
     message:
       'etapa deve ser: planejado, producao, edicao, aguardando_aprovacao, ajustes, aprovado ou entregue',
   })
   etapa?: EtapaProducao;
+
+  /** Quadro extra; sem ele o card vai para o quadro de producao. */
+  @IsOptional()
+  @IsUUID('4', { message: 'quadroId invalido' })
+  quadroId?: string | null;
+
+  /** Coluna do quadro extra (sem ela: a primeira coluna). */
+  @IsOptional()
+  @IsUUID('4', { message: 'colunaId invalido' })
+  colunaId?: string | null;
 
   @IsOptional()
   @IsArray()

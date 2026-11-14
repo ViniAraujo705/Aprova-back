@@ -194,7 +194,7 @@ export class NotificationEmailService {
       const link = n.video
         ? `${front}/videos/${n.video.id}/revisao`
         : n.demanda
-          ? `${front}/kanban`
+          ? `${front}/kanban?card=${n.demanda.id}`
           : `${front}/calendario`;
       return `- ${this.describe(n)}\n  ${link}`;
     });
@@ -237,6 +237,10 @@ export class NotificationEmailService {
         return `O prazo de ${tituloPrazo} venceu ${this.when(prazo)}`;
       case NotificationType.nova_demanda:
         return `Nova demanda para você: "${n.demanda?.titulo ?? ''}"`;
+      case NotificationType.mencao_demanda:
+        return `Você foi mencionado no card "${n.demanda?.titulo ?? ''}"`;
+      case NotificationType.comentario_demanda:
+        return `Comentário novo no card "${n.demanda?.titulo ?? ''}"`;
       case NotificationType.aguardando_cliente:
         return `${video} está esperando resposta de ${cliente} há 3 dias`;
       case NotificationType.lembrete_gravacao:
