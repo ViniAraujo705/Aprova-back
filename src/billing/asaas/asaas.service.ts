@@ -36,6 +36,22 @@ interface AsaasPayment {
   status?: string;
 }
 
+/** Cobranca como a Asaas devolve em GET /payments (so os campos usados). */
+export interface AsaasPaymentDetail {
+  id: string;
+  customer: string;
+  subscription?: string | null;
+  value: number;
+  netValue?: number;
+  status: string;
+  billingType?: string;
+  dueDate: string;
+  paymentDate?: string | null;
+  clientPaymentDate?: string | null;
+  description?: string | null;
+  invoiceUrl?: string | null;
+}
+
 interface AsaasSubscription {
   id: string;
   status?: string;
@@ -275,6 +291,46 @@ export class AsaasService {
     });
   }
 
+  /**
+   * Lista cobrancas com os filtros da API (status, paymentDate[ge], ...),
+   * paginando ate `maxItems`. Usado so pelo painel do super admin.
+   */
+  async listPayments(
+    filters: Record<string, string>,
+    maxItems = 1000,
+  ): Promise<AsaasPaymentDetail[]> {
+    return this.run('listar cobrancas', async () => {
+      const all: AsaasPaymentDetail[] = [];
+      let offset = 0;
+      for (;;) {
+        const query = new URLSearchParams({
+          ...filters,
+          limit: '100',
+          offset: String(offset),
+        });
+        const page = await this.request<{
+          data: AsaasPaymentDetail[];
+          hasMore?: boolean;
+        }>('GET', `/payments?${query.toString()}`);
+        all.push(...page.data);
+        offset += page.data.length;
+        if (!page.hasMore || page.data.length === 0 || all.length >= maxItems)
+          return all;
+      }
+    });
+  }
+
+  /** Saldo disponivel na conta Asaas. */
+  async getBalance(): Promise<number> {
+    return this.run('consultar saldo', async () => {
+      const res = await this.request<{ balance?: number }>(
+        'GET',
+        '/finance/balance',
+      );
+      return Number(res.balance ?? 0);
+    });
+  }
+
   private isPaid(status: string | undefined): boolean {
     return status === 'CONFIRMED' || status === 'RECEIVED';
   }
@@ -291,6 +347,9 @@ export class AsaasService {
         access_token: this.apiKey,
       },
       body: body ? JSON.stringify(body) : undefined,
+      // Sem timeout um travamento da Asaas prende a requisicao (e o painel
+      // admin) indefinidamente.
+      signal: AbortSignal.timeout(15_000),
     });
     const json = await res.json().catch(() => undefined);
     if (!res.ok) {

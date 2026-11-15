@@ -6,5 +6,6 @@ import { AsaasService } from './asaas/asaas.service';
 @Module({
   controllers: [BillingController],
   providers: [BillingService, AsaasService],
+  exports: [AsaasService],
 })
 export class BillingModule {}

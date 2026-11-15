@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AdminService } from './admin.service';
+import { AdminDashboardService } from './admin-dashboard.service';
 import { PlansService } from '../plans/plans.service';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateAccountPlanDto } from './dto/update-account-plan.dto';
@@ -29,7 +30,17 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly plansService: PlansService,
+    private readonly dashboardService: AdminDashboardService,
   ) {}
+
+  @Get('dashboard')
+  @ApiOperation({
+    summary:
+      'Painel do super admin: inscricoes, contas, receita (MRR) e inadimplencia (banco + Asaas).',
+  })
+  getDashboard() {
+    return this.dashboardService.getDashboard();
+  }
 
   @Get('users')
   listUsers() {
