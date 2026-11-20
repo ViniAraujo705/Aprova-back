@@ -4,7 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EtapaProducao, Prisma, UserRole, UserStatus } from '@prisma/client';
+import {
+  EtapaProducao,
+  LabelColor,
+  Prisma,
+  UserRole,
+  UserStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -23,6 +29,7 @@ import {
   COVER_TYPES,
   RegisterAnexoDto,
 } from './dto/anexo.dto';
+import { CopiarDemandaDto, DestinoDemandaDto } from './dto/mover-demanda.dto';
 
 const ANEXOS_PASTA = 'demanda-anexos';
 // Referencia/briefing, nao o video final: 100 MB como os arquivos de cliente.
@@ -73,6 +80,7 @@ const DEMANDA_SELECT = {
   arquivadaEm: true,
   prazoConcluido: true,
   capaAnexoId: true,
+  capaCor: true,
   quadroId: true,
   colunaId: true,
   criadoEm: true,
@@ -529,8 +537,16 @@ export class DemandasService {
     return this.findOneDto(demandaId);
   }
 
-  /** Define (ou tira, com null) a capa do card. So aceita imagem do proprio card. */
-  async setCapa(accountId: string, demandaId: string, anexoId: string | null) {
+  /**
+   * Define a capa do card: imagem de um anexo do proprio card OU so uma cor
+   * (como no Trello). Uma tira a outra; sem as duas, o card fica sem capa.
+   */
+  async setCapa(
+    accountId: string,
+    demandaId: string,
+    anexoId: string | null,
+    cor: LabelColor | null = null,
+  ) {
     await this.getOwned(accountId, demandaId);
     if (anexoId) {
       const anexo = await this.prisma.demandaAnexo.findFirst({
@@ -544,9 +560,163 @@ export class DemandasService {
     }
     await this.prisma.demanda.update({
       where: { id: demandaId },
-      data: { capaAnexoId: anexoId },
+      data: { capaAnexoId: anexoId, capaCor: anexoId ? null : cor },
     });
     return this.findOneDto(demandaId);
+  }
+
+  /* ------------------------- mover / copiar (Trello) ------------------------ */
+
+  /** Valida o destino e devolve onde o card fica + a posicao no fim da coluna. */
+  private async resolverDestino(
+    accountId: string,
+    dto: DestinoDemandaDto,
+    etapaAtual: EtapaProducao,
+    ignorarId?: string,
+  ) {
+    const lugar = dto.quadroId
+      ? await this.resolverColuna(accountId, dto.quadroId, dto.colunaId)
+      : { quadroId: null, colunaId: null };
+    const etapa = dto.quadroId ? etapaAtual : (dto.etapa ?? etapaAtual);
+    let posicao = dto.posicao;
+    if (posicao === undefined) {
+      const ultima = await this.prisma.demanda.aggregate({
+        where: {
+          accountId,
+          arquivadaEm: null,
+          ...(ignorarId ? { id: { not: ignorarId } } : {}),
+          ...this.escopoColuna({ etapa, ...lugar }),
+        },
+        _max: { posicao: true },
+      });
+      posicao = (ultima._max.posicao ?? 0) + POSICAO_PASSO;
+    }
+    return { ...lugar, etapa, posicao };
+  }
+
+  /** Nome legivel do destino, para o historico ("Producao · Edicao", "Quadro · Coluna"). */
+  private async nomeDoLugar(quadroId: string | null, colunaId: string | null, etapa: EtapaProducao) {
+    if (!quadroId) return { quadro: null, coluna: etapa };
+    const coluna = colunaId
+      ? await this.prisma.quadroColuna.findUnique({
+          where: { id: colunaId },
+          select: { nome: true, quadro: { select: { nome: true } } },
+        })
+      : null;
+    return { quadro: coluna?.quadro.nome ?? null, coluna: coluna?.nome ?? null };
+  }
+
+  /** Move o card para outro quadro (ou de volta para o de producao). */
+  async mover(accountId: string, id: string, dto: DestinoDemandaDto, autorId: string) {
+    await this.getOwned(accountId, id);
+    const antes = await this.prisma.demanda.findUniqueOrThrow({
+      where: { id },
+      select: { etapa: true, quadroId: true, colunaId: true },
+    });
+    const destino = await this.resolverDestino(accountId, dto, antes.etapa, id);
+    const demanda = await this.prisma.demanda.update({
+      where: { id },
+      data: {
+        quadroId: destino.quadroId,
+        colunaId: destino.colunaId,
+        etapa: destino.etapa,
+        posicao: destino.posicao,
+      },
+      select: DEMANDA_SELECT,
+    });
+    const mudou =
+      antes.quadroId !== destino.quadroId ||
+      antes.colunaId !== destino.colunaId ||
+      antes.etapa !== destino.etapa;
+    if (mudou) {
+      const de = await this.nomeDoLugar(antes.quadroId, antes.colunaId, antes.etapa);
+      const para = await this.nomeDoLugar(destino.quadroId, destino.colunaId, destino.etapa);
+      await this.registrar(id, autorId, 'moveu_quadro', { de, para });
+    }
+    return toDto(demanda);
+  }
+
+  /**
+   * Cria uma copia do card no destino. Copia descricao, tipo, cliente,
+   * responsavel, prazo e capa colorida; checklist, etiquetas e membros sao
+   * opcionais (como no Trello). Anexos e comentarios nao vao junto.
+   */
+  async copiar(accountId: string, id: string, dto: CopiarDemandaDto, autorId: string) {
+    await this.getOwned(accountId, id);
+    const origem = await this.prisma.demanda.findUniqueOrThrow({
+      where: { id },
+      select: {
+        titulo: true,
+        tipo: true,
+        descricao: true,
+        clienteId: true,
+        responsavelId: true,
+        prazo: true,
+        prazoConcluido: true,
+        etapa: true,
+        capaCor: true,
+        labels: { select: { labelId: true } },
+        collaborators: { select: { userId: true } },
+        checklist: {
+          select: { texto: true, concluido: true, posicao: true },
+          orderBy: { posicao: 'asc' },
+        },
+      },
+    });
+    const destino = await this.resolverDestino(accountId, dto, origem.etapa);
+    const manterChecklist = dto.manterChecklist ?? true;
+    const manterEtiquetas = dto.manterEtiquetas ?? true;
+    const manterMembros = dto.manterMembros ?? true;
+    // Membro que saiu da equipe nao volta pela copia.
+    const membros = manterMembros
+      ? await this.membrosValidos(
+          accountId,
+          origem.collaborators.map((c) => c.userId),
+        )
+      : [];
+    const copia = await this.prisma.demanda.create({
+      data: {
+        accountId,
+        titulo: dto.titulo.trim(),
+        tipo: origem.tipo,
+        descricao: origem.descricao,
+        clienteId: origem.clienteId,
+        responsavelId: manterMembros ? origem.responsavelId : null,
+        prazo: origem.prazo,
+        prazoConcluido: origem.prazoConcluido,
+        capaCor: origem.capaCor,
+        etapa: destino.etapa,
+        quadroId: destino.quadroId,
+        colunaId: destino.colunaId,
+        posicao: destino.posicao,
+        ...(manterEtiquetas && origem.labels.length
+          ? { labels: { create: origem.labels.map((l) => ({ labelId: l.labelId })) } }
+          : {}),
+        ...(membros.length
+          ? { collaborators: { create: membros.map((userId) => ({ userId })) } }
+          : {}),
+        ...(manterChecklist && origem.checklist.length
+          ? {
+              checklist: {
+                create: origem.checklist.map((c) => ({
+                  texto: c.texto,
+                  concluido: c.concluido,
+                  posicao: c.posicao,
+                })),
+              },
+            }
+          : {}),
+      },
+      select: DEMANDA_SELECT,
+    });
+    await this.registrar(copia.id, autorId, 'copiou', { de: origem.titulo });
+    await this.notifications.notifyDemanda(
+      accountId,
+      copia.id,
+      [copia.responsavelId, ...copia.collaborators.map((c) => c.userId)],
+      autorId,
+    );
+    return toDto(copia);
   }
 
   /** Um card (ativo ou arquivado) - usado pelo link de notificacao para achar o quadro. */

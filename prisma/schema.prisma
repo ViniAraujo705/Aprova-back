@@ -811,6 +811,8 @@ model Demanda {
   // Anexo de imagem usado como capa do card (sem FK: ao apagar o anexo o
   // servico limpa o campo).
   capaAnexoId    String?       @map("capa_anexo_id")
+  // Capa so de cor (estilo Trello). Exclusiva com capaAnexoId: definir uma tira a outra.
+  capaCor        LabelColor?   @map("capa_cor")
   // Quadro extra (livre) do card. null = quadro de producao, que usa `etapa`
   // como coluna; num quadro extra a coluna e `colunaId` e `etapa` e ignorada.
   quadroId       String?       @map("quadro_id")

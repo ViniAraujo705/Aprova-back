@@ -40,6 +40,7 @@ import {
   RegisterAnexoDto,
   SetCapaDto,
 } from './dto/anexo.dto';
+import { CopiarDemandaDto, MoverDemandaDto } from './dto/mover-demanda.dto';
 
 const UUID = new ParseUUIDPipe({ version: '4' });
 
@@ -208,7 +209,39 @@ export class DemandasController {
     @Param('id', UUID) id: string,
     @Body() dto: SetCapaDto,
   ) {
-    return this.demandasService.setCapa(user.accountId, id, dto.anexoId ?? null);
+    return this.demandasService.setCapa(
+      user.accountId,
+      id,
+      dto.anexoId ?? null,
+      dto.cor ?? null,
+    );
+  }
+
+  @Post(':id/mover')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Move o card para outro quadro (quadroId) ou para o de producao (quadroId null + etapa).',
+  })
+  mover(
+    @CurrentUser() user: AuthUser,
+    @Param('id', UUID) id: string,
+    @Body() dto: MoverDemandaDto,
+  ) {
+    return this.demandasService.mover(user.accountId, id, dto, user.id);
+  }
+
+  @Post(':id/copiar')
+  @ApiOperation({
+    summary:
+      'Cria uma copia do card no destino (checklist, etiquetas e membros opcionais).',
+  })
+  copiar(
+    @CurrentUser() user: AuthUser,
+    @Param('id', UUID) id: string,
+    @Body() dto: CopiarDemandaDto,
+  ) {
+    return this.demandasService.copiar(user.accountId, id, dto, user.id);
   }
 
   @Get(':id/comentarios')
