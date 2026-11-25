@@ -31,6 +31,26 @@ export class GoogleDriveService {
     return this.oauth.listItems(accessToken, options);
   }
 
+  /**
+   * Token de acesso de curta duracao para o Google Picker abrir no navegador
+   * com a conta conectada. So carrega `drive.file`: o front ve apenas o que o
+   * proprio usuario escolher.
+   */
+  async pickerToken(userId: string) {
+    const connection = await this.prisma.googleDriveConnection.findUnique({
+      where: { userId },
+    });
+    if (!connection) {
+      throw new BadRequestException(
+        'Conecte o Google Drive antes de escolher arquivos',
+      );
+    }
+    const accessToken = await this.oauth.getValidAccessToken(
+      connection.refreshTokenEnc,
+    );
+    return { accessToken };
+  }
+
   async linkToProject(
     accountId: string,
     projectId: string,
