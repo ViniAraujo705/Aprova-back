@@ -152,6 +152,18 @@ export class GoogleDriveController {
     };
   }
 
+  @Get('picker-token')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.owner, UserRole.editor)
+  @ApiOperation({
+    summary:
+      'Token de acesso (escopo drive.file) para abrir o Google Picker no navegador.',
+  })
+  pickerToken(@CurrentUser() user: AuthUser) {
+    return this.drive.pickerToken(user.id);
+  }
+
   @Get('items')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)

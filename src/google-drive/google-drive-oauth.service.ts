@@ -14,13 +14,14 @@ const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 
 /**
- * Escopo que permite ler o CONTEUDO dos arquivos (necessario pra importar
- * video do Drive). Cobre tambem os metadados que a navegacao usa. Conexoes
- * feitas antes so tem `drive.metadata.readonly`: navegam, mas precisam
- * reconectar pra importar (ver `hasReadScope`).
+ * `drive.file`: o app so enxerga os arquivos que o usuario escolhe no Google
+ * Picker (no front). E o escopo nao sensivel recomendado pelo Google - nao
+ * exige auditoria de seguranca (CASA) na verificacao do app OAuth, ao
+ * contrario de `drive.readonly`/`drive.metadata.readonly` (restritos).
+ * Conexoes antigas com `drive.readonly` continuam aceitas no import.
  */
-export const DRIVE_READ_SCOPE =
-  'https://www.googleapis.com/auth/drive.readonly';
+export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const LEGACY_READ_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 
 export const DRIVE_RECONNECT_MESSAGE =
   'O acesso ao Google Drive expirou ou foi revogado. Reconecte o Google Drive em Integracoes.';
@@ -46,7 +47,7 @@ interface GoogleDriveFileResponse {
   size?: string;
 }
 
-/** OAuth e cliente REST somente de metadados do Google Drive. */
+/** OAuth e cliente REST do Google Drive (arquivos escolhidos no Picker). */
 @Injectable()
 export class GoogleDriveOAuthService {
   private readonly logger = new Logger(GoogleDriveOAuthService.name);
@@ -65,7 +66,7 @@ export class GoogleDriveOAuthService {
       access_type: 'offline',
       prompt: 'consent',
       include_granted_scopes: true,
-      scope: [DRIVE_READ_SCOPE, 'openid', 'email'],
+      scope: [DRIVE_FILE_SCOPE, 'openid', 'email'],
       state,
     });
   }
@@ -214,7 +215,10 @@ export class GoogleDriveOAuthService {
   async hasReadScope(accessToken: string): Promise<boolean> {
     try {
       const info = await this.newClient().getTokenInfo(accessToken);
-      return (info.scopes ?? []).includes(DRIVE_READ_SCOPE);
+      const scopes = info.scopes ?? [];
+      return (
+        scopes.includes(DRIVE_FILE_SCOPE) || scopes.includes(LEGACY_READ_SCOPE)
+      );
     } catch {
       // Sem como confirmar: deixa o download dizer (403 vira o mesmo aviso).
       return true;
