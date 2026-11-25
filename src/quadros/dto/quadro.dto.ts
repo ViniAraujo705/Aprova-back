@@ -3,12 +3,16 @@ import {
   ArrayMaxSize,
   IsArray,
   IsNotEmpty,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
 } from 'class-validator';
+
+/** Paleta de fundos do quadro (as cores sao do front, na identidade do Check). */
+export const FUNDOS_QUADRO = ['verde', 'musgo', 'grafite', 'areia', 'lima', 'ceu'] as const;
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -40,6 +44,16 @@ export class UpdateQuadroDto {
   @IsOptional()
   @IsNumber({ allowNaN: false, allowInfinity: false })
   posicao?: number;
+
+  /** null volta ao fundo padrao. */
+  @IsOptional()
+  @IsIn([...FUNDOS_QUADRO, null], { message: 'fundo invalido' })
+  fundo?: string | null;
+}
+
+export class UpdateFundoProducaoDto {
+  @IsIn([...FUNDOS_QUADRO, null], { message: 'fundo invalido' })
+  fundo: string | null;
 }
 
 export class CreateColunaDto {

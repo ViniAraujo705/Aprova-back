@@ -25,6 +25,7 @@ import {
   CreateQuadroDto,
   RemoveColunaQueryDto,
   UpdateColunaDto,
+  UpdateFundoProducaoDto,
   UpdateQuadroDto,
 } from './dto/quadro.dto';
 
@@ -42,6 +43,22 @@ export class QuadrosController {
   @ApiOperation({ summary: 'Quadros extras do Kanban, com as colunas em ordem.' })
   findAll(@CurrentUser() user: AuthUser) {
     return this.quadrosService.findAll(user.accountId);
+  }
+
+  // Antes de ':id' (o ParseUUIDPipe recusaria "producao").
+  @Get('producao')
+  @ApiOperation({ summary: 'Preferencias do quadro de producao (fundo).' })
+  getProducao(@CurrentUser() user: AuthUser) {
+    return this.quadrosService.getProducao(user.accountId);
+  }
+
+  @Patch('producao')
+  @ApiOperation({ summary: 'Troca o fundo do quadro de producao.' })
+  updateProducao(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateFundoProducaoDto,
+  ) {
+    return this.quadrosService.updateProducao(user.accountId, dto);
   }
 
   @Post()

@@ -25,7 +25,10 @@ import { DemandasService } from './demandas.service';
 import { CreateDemandaDto } from './dto/create-demanda.dto';
 import { UpdateDemandaDto } from './dto/update-demanda.dto';
 import { UpdateDemandaEtapaDto } from './dto/update-demanda-etapa.dto';
-import { ListDemandasQueryDto } from './dto/list-demandas-query.dto';
+import {
+  AgendaDemandasQueryDto,
+  ListDemandasQueryDto,
+} from './dto/list-demandas-query.dto';
 import {
   CreateChecklistItemDto,
   UpdateChecklistItemDto,
@@ -72,6 +75,16 @@ export class DemandasController {
       query.arquivadas ?? false,
       query.quadroId,
     );
+  }
+
+  // Antes de ':id' (o ParseUUIDPipe recusaria "agenda").
+  @Get('agenda')
+  @ApiOperation({
+    summary:
+      'Planejador: cards ativos com prazo entre ?de e ?ate, de todos os quadros (max. 62 dias).',
+  })
+  agenda(@CurrentUser() user: AuthUser, @Query() query: AgendaDemandasQueryDto) {
+    return this.demandasService.agenda(user.accountId, query.de, query.ate);
   }
 
   @Patch(':id')

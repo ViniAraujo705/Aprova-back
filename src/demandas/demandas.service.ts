@@ -195,6 +195,25 @@ export class DemandasService {
     return demandas.map(toDto);
   }
 
+  async agenda(accountId: string, de: string, ate: string) {
+    const inicio = new Date(de);
+    const fim = new Date(ate);
+    if (fim < inicio) throw new BadRequestException('ate antes de de');
+    if (fim.getTime() - inicio.getTime() > 62 * 86_400_000) {
+      throw new BadRequestException('Intervalo maximo de 62 dias');
+    }
+    const demandas = await this.prisma.demanda.findMany({
+      where: { accountId, arquivadaEm: null, prazo: { gte: inicio, lte: fim } },
+      orderBy: [{ prazo: 'asc' }, { posicao: 'asc' }],
+      take: 500,
+      select: { ...DEMANDA_SELECT, quadro: { select: { nome: true } } },
+    });
+    return demandas.map(({ quadro, ...d }) => ({
+      ...toDto(d),
+      quadroNome: quadro?.nome ?? null,
+    }));
+  }
+
   async update(
     accountId: string,
     id: string,
