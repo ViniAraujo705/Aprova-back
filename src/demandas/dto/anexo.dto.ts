@@ -1,4 +1,5 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsEnum, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { LabelColor } from '@prisma/client';
 
 // Anexos de card: os mesmos tipos dos arquivos de cliente + gif, video curto
 // de referencia e audio.
@@ -56,5 +57,10 @@ export class SetCapaDto {
   /** Id de um anexo de imagem do card; null tira a capa. */
   @IsOptional()
   @IsUUID('4')
-  anexoId: string | null;
+  anexoId?: string | null;
+
+  /** Capa so de cor. Vale quando anexoId nao vem; null tira a capa. */
+  @IsOptional()
+  @IsEnum(LabelColor, { message: 'cor invalida' })
+  cor?: LabelColor | null;
 }

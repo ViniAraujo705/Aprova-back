@@ -25,7 +25,10 @@ import { DemandasService } from './demandas.service';
 import { CreateDemandaDto } from './dto/create-demanda.dto';
 import { UpdateDemandaDto } from './dto/update-demanda.dto';
 import { UpdateDemandaEtapaDto } from './dto/update-demanda-etapa.dto';
-import { ListDemandasQueryDto } from './dto/list-demandas-query.dto';
+import {
+  AgendaDemandasQueryDto,
+  ListDemandasQueryDto,
+} from './dto/list-demandas-query.dto';
 import {
   CreateChecklistItemDto,
   UpdateChecklistItemDto,
@@ -40,6 +43,7 @@ import {
   RegisterAnexoDto,
   SetCapaDto,
 } from './dto/anexo.dto';
+import { CopiarDemandaDto, MoverDemandaDto } from './dto/mover-demanda.dto';
 
 const UUID = new ParseUUIDPipe({ version: '4' });
 
@@ -71,6 +75,16 @@ export class DemandasController {
       query.arquivadas ?? false,
       query.quadroId,
     );
+  }
+
+  // Antes de ':id' (o ParseUUIDPipe recusaria "agenda").
+  @Get('agenda')
+  @ApiOperation({
+    summary:
+      'Planejador: cards ativos com prazo entre ?de e ?ate, de todos os quadros (max. 62 dias).',
+  })
+  agenda(@CurrentUser() user: AuthUser, @Query() query: AgendaDemandasQueryDto) {
+    return this.demandasService.agenda(user.accountId, query.de, query.ate);
   }
 
   @Patch(':id')
@@ -208,7 +222,39 @@ export class DemandasController {
     @Param('id', UUID) id: string,
     @Body() dto: SetCapaDto,
   ) {
-    return this.demandasService.setCapa(user.accountId, id, dto.anexoId ?? null);
+    return this.demandasService.setCapa(
+      user.accountId,
+      id,
+      dto.anexoId ?? null,
+      dto.cor ?? null,
+    );
+  }
+
+  @Post(':id/mover')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Move o card para outro quadro (quadroId) ou para o de producao (quadroId null + etapa).',
+  })
+  mover(
+    @CurrentUser() user: AuthUser,
+    @Param('id', UUID) id: string,
+    @Body() dto: MoverDemandaDto,
+  ) {
+    return this.demandasService.mover(user.accountId, id, dto, user.id);
+  }
+
+  @Post(':id/copiar')
+  @ApiOperation({
+    summary:
+      'Cria uma copia do card no destino (checklist, etiquetas e membros opcionais).',
+  })
+  copiar(
+    @CurrentUser() user: AuthUser,
+    @Param('id', UUID) id: string,
+    @Body() dto: CopiarDemandaDto,
+  ) {
+    return this.demandasService.copiar(user.accountId, id, dto, user.id);
   }
 
   @Get(':id/comentarios')

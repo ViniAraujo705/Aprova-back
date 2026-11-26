@@ -9,6 +9,7 @@ import {
   CreateColunaDto,
   CreateQuadroDto,
   UpdateColunaDto,
+  UpdateFundoProducaoDto,
   UpdateQuadroDto,
 } from './dto/quadro.dto';
 
@@ -19,6 +20,7 @@ const QUADRO_SELECT = {
   id: true,
   nome: true,
   posicao: true,
+  fundo: true,
   criadoEm: true,
   colunas: {
     select: { id: true, nome: true, posicao: true },
@@ -48,6 +50,24 @@ export class QuadrosService {
       select: QUADRO_SELECT,
     });
     return quadros.map(toDto);
+  }
+
+  /** O quadro de producao nao e uma linha de Quadro: o fundo fica na conta. */
+  async getProducao(accountId: string) {
+    const conta = await this.prisma.account.findUnique({
+      where: { id: accountId },
+      select: { kanbanFundo: true },
+    });
+    return { fundo: conta?.kanbanFundo ?? null };
+  }
+
+  async updateProducao(accountId: string, dto: UpdateFundoProducaoDto) {
+    const conta = await this.prisma.account.update({
+      where: { id: accountId },
+      data: { kanbanFundo: dto.fundo ?? null },
+      select: { kanbanFundo: true },
+    });
+    return { fundo: conta.kanbanFundo };
   }
 
   async create(accountId: string, dto: CreateQuadroDto) {
