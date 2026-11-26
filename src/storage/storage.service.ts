@@ -8,6 +8,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -276,6 +277,28 @@ export class StorageService {
     await this.client.send(
       new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
     );
+  }
+
+  /**
+   * Lista todos os objetos do bucket (key + tamanho), paginando de 1000 em
+   * 1000. Usado pelo painel do super admin para medir o armazenamento real.
+   */
+  async listAllObjects(): Promise<{ key: string; size: number }[]> {
+    const out: { key: string; size: number }[] = [];
+    let token: string | undefined;
+    do {
+      const page = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          ContinuationToken: token,
+        }),
+      );
+      for (const o of page.Contents ?? []) {
+        if (o.Key) out.push({ key: o.Key, size: o.Size ?? 0 });
+      }
+      token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (token);
+    return out;
   }
 
   /**

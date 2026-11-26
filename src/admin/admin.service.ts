@@ -24,6 +24,62 @@ export class AdminService {
   ) {}
 
   /**
+   * Todas as pessoas com login na plataforma (donos, editores e admins), com
+   * as agencias de que participam, papel em cada uma, metodo de login e
+   * ultimo acesso (maior Session.ultimoAcessoEm). Clientes finais das
+   * agencias nao tem login (revisam por link publico) e nao entram aqui.
+   */
+  async listPeople() {
+    const [users, lastAccess] = await Promise.all([
+      this.prisma.user.findMany({
+        orderBy: { criadoEm: 'desc' },
+        select: {
+          id: true,
+          nome: true,
+          email: true,
+          status: true,
+          criadoEm: true,
+          emailVerificadoEm: true,
+          googleId: true,
+          appleId: true,
+          memberships: {
+            orderBy: { criadoEm: 'asc' },
+            select: {
+              role: true,
+              status: true,
+              account: { select: { id: true, nomeAgencia: true, plan: true } },
+            },
+          },
+        },
+      }),
+      this.prisma.session.groupBy({
+        by: ['userId'],
+        _max: { ultimoAcessoEm: true },
+      }),
+    ]);
+    const lastByUser = new Map(
+      lastAccess.map((s) => [s.userId, s._max.ultimoAcessoEm]),
+    );
+    return users.map((u) => ({
+      id: u.id,
+      nome: u.nome,
+      email: u.email,
+      status: u.status,
+      criadoEm: u.criadoEm,
+      emailConfirmado: Boolean(u.emailVerificadoEm),
+      login: u.googleId ? 'google' : u.appleId ? 'apple' : 'email',
+      ultimoAcesso: lastByUser.get(u.id) ?? null,
+      contas: u.memberships.map((m) => ({
+        accountId: m.account.id,
+        nomeAgencia: m.account.nomeAgencia,
+        plano: m.account.plan,
+        papel: m.role,
+        status: m.status,
+      })),
+    }));
+  }
+
+  /**
    * Lista todas as agencias cadastradas (uma linha por vinculo owner<->
    * agencia - se a mesma pessoa for owner de 2 agencias, aparece 2x, uma
    * por agencia) com o tamanho de cada conta. `status` aqui e o banimento
