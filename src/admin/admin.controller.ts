@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -17,6 +18,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AdminService } from './admin.service';
 import { AdminDashboardService } from './admin-dashboard.service';
+import { AdminStorageService } from './admin-storage.service';
 import { PlansService } from '../plans/plans.service';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateAccountPlanDto } from './dto/update-account-plan.dto';
@@ -31,7 +33,28 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly plansService: PlansService,
     private readonly dashboardService: AdminDashboardService,
+    private readonly storageService: AdminStorageService,
   ) {}
+
+  @Get('storage')
+  @ApiOperation({
+    summary:
+      'Armazenamento real do R2: total, custo estimado, por tipo de arquivo, por conta e arquivos nao vinculados (cache 10 min; ?atualizar=1 recalcula).',
+  })
+  getStorage(@Query('atualizar') atualizar?: string) {
+    return this.storageService.getReport(
+      atualizar === '1' || atualizar === 'true',
+    );
+  }
+
+  @Get('people')
+  @ApiOperation({
+    summary:
+      'Todas as pessoas com login (donos, editores, admins) com agencias, papel, login e ultimo acesso.',
+  })
+  listPeople() {
+    return this.adminService.listPeople();
+  }
 
   @Get('dashboard')
   @ApiOperation({
